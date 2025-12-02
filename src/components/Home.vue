@@ -51,6 +51,7 @@ const searchTrains = () => {
         </div>
         
         <nav class="nav">
+          <router-link to="/profile" class="nav-link">Profile</router-link>
           <router-link to="/login" class="nav-link">Masuk</router-link>
           <router-link to="/register" class="nav-btn">Daftar</router-link>
         </nav>
