@@ -1,12 +1,41 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { tabs } from '../data/tabs.js'
-import { formatDate, searchTrains as performSearch } from '../utils/helpers.js'
+import { 
+  formatDate,
+  formatPrice,
+  fetchPromos,
+  fetchDestinations,
+  fetchStations,
+  searchTrains as apiSearchTrains
+} from '../utils/api.js'
 
+// Router
+const router = useRouter()
+
+// User data
+const userToken = ref(null)
+const userData = ref(null)
+const showUserMenu = ref(false)
+
+// Search form data
 const activeTab = ref('antar-kota')
 const fromStation = ref('Gambir (GMR)')
 const toStation = ref('Bandung (BD)')
 const travelDate = ref(new Date().toISOString().split('T')[0])
+
+// Data dari API
+const promos = ref([])
+const destinations = ref([])
+const stations = ref([])
+const searchResults = ref([])
+
+// Loading dan error states
+const isLoading = ref(false)
+const isSearching = ref(false)
+const errorMessage = ref(null)
+const successMessage = ref(null)
 
 // Modal untuk promo
 const showPromoModal = ref(false)
@@ -16,167 +45,77 @@ const selectedPromo = ref(null)
 const showDestinationModal = ref(false)
 const selectedDestination = ref(null)
 
-const promos = [
-  {
-    id: 1,
-    name: 'Laboratorium Klinik PRAMITA',
-    label: 'Diskon Spesial',
-    icon: '🏥',
-    discount: '25%',
-    shortDesc: 'Diskon untuk pengguna SwiftRail',
-    image: 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=500&h=300&fit=crop',
-    description: 'Dapatkan diskon spesial hingga 25% untuk semua layanan pemeriksaan kesehatan di Laboratorium Klinik PRAMITA. Promo ini berlaku untuk member SwiftRail yang aktif dan sudah terverifikasi.',
-    duration: '15 Januari 2025',
-    terms: [
-      'Berlaku untuk member SwiftRail yang aktif',
-      'Minimal pembelian tiket Rp 500.000',
-      'Tidak dapat digabungkan dengan promo lain',
-      'Diskon hanya berlaku untuk pemeriksaan laboratorium darah',
-      'Promo tidak berlaku untuk layanan konsultasi dokter'
-    ]
-  },
-  {
-    id: 2,
-    name: 'IBIS YIA KULON PROGO',
-    label: 'Diskon Flash',
-    icon: '🏨',
-    discount: '30%',
-    shortDesc: 'Menginap lebih hemat',
-    image: 'https://images.unsplash.com/photo-1631049307038-da0ec54d8c90?w=500&h=300&fit=crop',
-    description: 'Nikmati diskon flash hingga 30% untuk menginap di IBIS YIA KULON PROGO di Yogyakarta. Hotel bintang 4 dengan fasilitas lengkap dan lokasi strategis.',
-    duration: '31 Desember 2024',
-    terms: [
-      'Berlaku untuk pemesanan 3 malam atau lebih',
-      'Check-in minimal 7 hari setelah pembelian tiket',
-      'Hanya tersedia untuk tipe kamar standar',
-      'Tidak termasuk sarapan premium',
-      'Diskon tidak dapat ditransfer ke orang lain'
-    ]
-  },
-  {
-    id: 3,
-    name: 'Makanan di TERMINAL',
-    label: 'Promo Gratis',
-    icon: '🍽️',
-    discount: 'Gratis',
-    shortDesc: 'Voucher makan senilai Rp50k',
-    image: 'https://images.unsplash.com/photo-1555939594-58d7cb561a1f?w=500&h=300&fit=crop',
-    description: 'Dapatkan voucher makan gratis senilai Rp 50.000 untuk digunakan di merchant makanan di terminal keberangkatan Anda. Voucher dapat ditukar dengan berbagai pilihan kuliner.',
-    duration: '30 Januari 2025',
-    terms: [
-      'Voucher berlaku untuk 1 kali transaksi',
-      'Berlaku di semua outlet food court terminal utama',
-      'Tidak dapat ditukar dengan uang tunai',
-      'Berlaku 2 jam sebelum keberangkatan kereta',
-      'Saldo voucher tidak bisa dikembalikan jika lebih sedikit dari total pembelian'
-    ]
-  },
-  {
-    id: 4,
-    name: 'Cashback untuk Semua Perjalanan',
-    label: 'Cashback',
-    icon: '💰',
-    discount: '50K',
-    shortDesc: 'Cashback setiap pembelian',
-    image: 'https://images.unsplash.com/photo-1579621970563-430f63602022?w=500&h=300&fit=crop',
-    description: 'Setiap pembelian tiket kereta melalui aplikasi SwiftRail, Anda akan mendapatkan cashback hingga Rp 50.000 yang langsung masuk ke akun Anda.',
-    duration: '28 Februari 2025',
-    terms: [
-      'Cashback otomatis dikreditkan 24 jam setelah keberangkatan',
-      'Berlaku untuk semua jenis kereta (antar kota, lokal, KRL, LRT)',
-      'Minimum pembelian tiket Rp 200.000',
-      'Maksimal cashback Rp 50.000 per transaksi',
-      'Cashback dapat digunakan untuk pembelian tiket berikutnya'
-    ]
+// Modal untuk hasil pencarian
+const showSearchModal = ref(false)
+
+// Fetch data saat component mounted
+onMounted(async () => {
+  try {
+    isLoading.value = true
+    errorMessage.value = null
+    
+    // Check if user is logged in
+    userToken.value = localStorage.getItem('userToken')
+    const userDataStr = localStorage.getItem('userData')
+    if (userDataStr) {
+      userData.value = JSON.parse(userDataStr)
+    }
+    
+    // Fetch semua data secara parallel
+    const [promosData, destinationsData, stationsData] = await Promise.all([
+      fetchPromos(),
+      fetchDestinations(),
+      fetchStations()
+    ])
+    
+    promos.value = promosData || []
+    destinations.value = destinationsData || []
+    stations.value = stationsData || []
+    
+  } catch (error) {
+    errorMessage.value = 'Gagal memuat data. Silakan coba lagi.'
+    console.error('Error loading data:', error)
+  } finally {
+    isLoading.value = false
   }
-]
+})
+
+const handleLogout = () => {
+  localStorage.removeItem('userToken')
+  localStorage.removeItem('userData')
+  showUserMenu.value = false
+  router.push('/login')
+}
 
 const openPromoModal = (promo) => {
   selectedPromo.value = promo
   showPromoModal.value = true
+  document.body.classList.add('modal-open')
   document.body.style.overflow = 'hidden'
 }
 
 const closePromoModal = () => {
   showPromoModal.value = false
+  document.body.classList.remove('modal-open')
   document.body.style.overflow = 'auto'
 }
-
-const destinations = [
-  {
-    id: 1,
-    name: 'Jakarta',
-    subtitle: 'Ibu Kota Negara',
-    icon: '🏙️',
-    image: 'https://images.unsplash.com/photo-1625399579846-40eb8e8f36e4?w=500&h=400&fit=crop',
-    description: 'Jakarta adalah jantung Indonesia yang penuh dengan kehidupan modern. Kota ini menawarkan berbagai atraksi wisata dari museum bersejarah, pusat perbelanjaan modern, hingga kuliner kelas dunia.',
-    highlights: [
-      'Monumen Nasional (Monas) - Ikon kemerdekaan Indonesia',
-      'Kota Tua - Pusat perdagangan bersejarah dari zaman Belanda',
-      'Taman Mini Indonesia Indah - Miniatur budaya seluruh nusantara',
-      'Grand Indonesia & Senayan City - Pusat perbelanjaan terbesar'
-    ],
-    bestTime: 'Mei - September',
-    transport: 'Stasiun Gambir & Stasiun Kota'
-  },
-  {
-    id: 2,
-    name: 'Bandung',
-    subtitle: 'Kota Bunga',
-    icon: '🌺',
-    image: 'https://images.unsplash.com/photo-1549144945-e39de59ee7ac?w=500&h=400&fit=crop',
-    description: 'Bandung adalah kota yang terkenal dengan suasana sejuk dan pemandangan alam yang indah. Banyak tempat wisata keluarga, outlet fashion, dan kuliner yang menarik.',
-    highlights: [
-      'Tangkuban Perahu - Gunung berapi yang masih aktif',
-      'Kebun Strawberry - Pengalaman petik buah langsung',
-      'Kawah Putih - Danau kawah dengan air berwarna putih unik',
-      'Factory Outlet - Belanja branded items dengan harga murah'
-    ],
-    bestTime: 'Maret - Oktober',
-    transport: 'Stasiun Bandung'
-  },
-  {
-    id: 3,
-    name: 'Yogyakarta',
-    subtitle: 'Warisan Budaya',
-    icon: '🏛️',
-    image: 'https://images.unsplash.com/photo-1552733266-e831426f2e2f?w=500&h=400&fit=crop',
-    description: 'Yogyakarta adalah pusat seni dan budaya Jawa yang kaya akan sejarah. Kota ini menyimpan banyak candi bersejarah dan tradisi budaya yang masih kuat.',
-    highlights: [
-      'Candi Borobudur - Candi Buddha terbesar di dunia',
-      'Candi Prambanan - Candi Hindu dengan arsitektur megah',
-      'Keraton Yogyakarta - Istana kesultanan yang masih aktif',
-      'Malioboro Street - Jalan perdagangan tradisional yang terkenal'
-    ],
-    bestTime: 'Juni - September',
-    transport: 'Stasiun Yogyakarta'
-  },
-  {
-    id: 4,
-    name: 'Surabaya',
-    subtitle: 'Kota Pahlawan',
-    icon: '⚔️',
-    image: 'https://images.unsplash.com/photo-1595121603385-f2e4adf32e6b?w=500&h=400&fit=crop',
-    description: 'Surabaya adalah kota pahlawan dengan sejarah perjuangan yang mendalam. Kota ini memiliki daya tarik budaya, museum bersejarah, dan kuliner khas yang lezat.',
-    highlights: [
-      'Monumen Kapal Selam - Museum kapal selam pertama di Asia',
-      'Jembatan Suramadu - Jembatan gantung terpanjang Indonesia',
-      'Taman Bungkul - Ruang publik interaktif dan edukatif',
-      'Makanan Rawon & Soto Ayam - Kuliner khas Surabaya yang enak'
-    ],
-    bestTime: 'April - Oktober',
-    transport: 'Stasiun Surabaya Gubeng'
-  }
-]
 
 const openDestinationModal = (destination) => {
   selectedDestination.value = destination
   showDestinationModal.value = true
+  document.body.classList.add('modal-open')
   document.body.style.overflow = 'hidden'
 }
 
 const closeDestinationModal = () => {
   showDestinationModal.value = false
+  document.body.classList.remove('modal-open')
+  document.body.style.overflow = 'auto'
+}
+
+const closeSearchModal = () => {
+  showSearchModal.value = false
+  document.body.classList.remove('modal-open')
   document.body.style.overflow = 'auto'
 }
 
@@ -190,13 +129,34 @@ const swapStations = () => {
   toStation.value = temp
 }
 
-const searchTrains = () => {
-  performSearch({
-    fromStation: fromStation.value,
-    toStation: toStation.value,
-    travelDate: travelDate.value,
-    activeTab: activeTab.value
-  })
+const searchTrains = async () => {
+  try {
+    isSearching.value = true
+    errorMessage.value = null
+    successMessage.value = null
+    
+    const result = await apiSearchTrains({
+      fromStation: fromStation.value,
+      toStation: toStation.value,
+      travelDate: travelDate.value,
+      activeTab: activeTab.value
+    })
+    
+    if (result.success) {
+      searchResults.value = result.results || []
+      showSearchModal.value = true
+      document.body.classList.add('modal-open')
+      document.body.style.overflow = 'hidden'
+      successMessage.value = `Ditemukan ${searchResults.value.length} kereta tersedia`
+    } else {
+      errorMessage.value = result.error || 'Gagal mencari kereta'
+    }
+  } catch (error) {
+    errorMessage.value = 'Terjadi kesalahan saat mencari kereta'
+    console.error('Error searching trains:', error)
+  } finally {
+    isSearching.value = false
+  }
 }
 </script>
 
@@ -223,9 +183,33 @@ const searchTrains = () => {
         </div>
         
         <nav class="nav">
-          <router-link to="/profile" class="nav-link">Profile</router-link>
-          <router-link to="/login" class="nav-link">Masuk</router-link>
-          <router-link to="/register" class="nav-btn">Daftar</router-link>
+          <router-link to="/" class="nav-link active">Home</router-link>
+          <a href="#" class="nav-link">Tickets</a>
+          
+          <!-- If not logged in -->
+          <template v-if="!userToken">
+            <router-link to="/login" class="nav-link">Masuk</router-link>
+            <router-link to="/register" class="nav-btn">Daftar</router-link>
+          </template>
+          
+          <!-- If logged in -->
+          <div v-else class="user-menu-wrapper">
+            <button @click="showUserMenu = !showUserMenu" class="user-menu-btn">
+              <div class="user-avatar">
+                {{ userData?.first_name?.charAt(0) }}{{ userData?.last_name?.charAt(0) }}
+              </div>
+              <span class="user-name">{{ userData?.first_name }} {{ userData?.last_name }}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            
+            <!-- Dropdown menu -->
+            <div v-if="showUserMenu" class="dropdown-menu">
+              <router-link to="/profile" class="dropdown-item">Profil Saya</router-link>
+              <button @click="handleLogout" class="dropdown-item logout">Keluar</button>
+            </div>
+          </div>
         </nav>
       </div>
     </header>
@@ -355,9 +339,25 @@ const searchTrains = () => {
             </div>
           </div>
 
-          <button class="search-btn" @click="searchTrains">
-            Cari
+          <button class="search-btn" @click="searchTrains" :disabled="isSearching">
+            {{ isSearching ? 'Mencari...' : 'Cari' }}
           </button>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div v-if="isLoading" class="loading-indicator">
+          <div class="spinner"></div>
+          <p>Memuat data...</p>
+        </div>
+
+        <!-- Error Message -->
+        <div v-if="errorMessage" class="error-alert">
+          <p>{{ errorMessage }}</p>
+        </div>
+
+        <!-- Success Message -->
+        <div v-if="successMessage" class="success-alert">
+          <p>{{ successMessage }}</p>
         </div>
       </div>
     </section>
@@ -437,7 +437,6 @@ const searchTrains = () => {
             </div>
             <div class="promo-content">
               <div class="promo-label">
-                <span class="label-icon">{{ promo.icon }}</span>
                 {{ promo.label }}
               </div>
               <div class="promo-discount">{{ promo.discount }}</div>
@@ -484,7 +483,6 @@ const searchTrains = () => {
           <div class="reward-card gold" style="animation-delay: 0s;">
             <div class="reward-top">
               <div class="reward-badge">RAILPOIN</div>
-              <div class="reward-icon">🎫</div>
             </div>
             <div class="reward-amount">25.000</div>
             <p class="reward-label">Poin Perjalanan</p>
@@ -493,7 +491,6 @@ const searchTrains = () => {
           <div class="reward-card platinum" style="animation-delay: 0.1s;">
             <div class="reward-top">
               <div class="reward-badge">RAILPOIN</div>
-              <div class="reward-icon">💎</div>
             </div>
             <div class="reward-amount">50.000</div>
             <p class="reward-label">Poin Premium</p>
@@ -502,7 +499,6 @@ const searchTrains = () => {
           <div class="reward-card silver" style="animation-delay: 0.2s;">
             <div class="reward-top">
               <div class="reward-badge">VOUCHER</div>
-              <div class="reward-icon">🎁</div>
             </div>
             <div class="reward-amount">100K</div>
             <p class="reward-label">Voucher Makanan</p>
@@ -511,7 +507,6 @@ const searchTrains = () => {
           <div class="reward-card bronze" style="animation-delay: 0.3s;">
             <div class="reward-top">
               <div class="reward-badge">BONUS</div>
-              <div class="reward-icon">🎉</div>
             </div>
             <div class="reward-amount">15.000</div>
             <p class="reward-label">Diskon Tiket</p>
@@ -590,7 +585,6 @@ const searchTrains = () => {
           </div>
           
           <div class="modal-header">
-            <span class="modal-icon">{{ selectedPromo.icon }}</span>
             <h2 class="modal-title">{{ selectedPromo.name }}</h2>
             <p class="modal-label">{{ selectedPromo.label }}</p>
           </div>
@@ -639,7 +633,6 @@ const searchTrains = () => {
           </div>
           
           <div class="modal-header">
-            <span class="modal-icon">{{ selectedDestination.icon }}</span>
             <h2 class="modal-title">{{ selectedDestination.name }}</h2>
             <p class="modal-label">{{ selectedDestination.subtitle }}</p>
           </div>
@@ -672,6 +665,70 @@ const searchTrains = () => {
 
           <button class="modal-action-btn" @click="closeDestinationModal">Tutup</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Search Results Modal -->
+    <div v-if="showSearchModal" class="modal-overlay" @click="closeSearchModal">
+      <div class="modal-content search-modal" @click.stop>
+        <button class="modal-close" @click="closeSearchModal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        
+        <div class="search-modal-header">
+          <h2>Hasil Pencarian Kereta</h2>
+          <p class="search-info">
+            {{ fromStation }} → {{ toStation }} | {{ formattedDate }}
+          </p>
+        </div>
+
+        <div v-if="searchResults.length > 0" class="trains-list">
+          <div v-for="train in searchResults" :key="train.id" class="train-card">
+            <div class="train-header">
+              <div class="train-name">
+                <h3>{{ train.name }}</h3>
+                <span class="train-number">{{ train.number }}</span>
+              </div>
+              <div class="train-class">{{ train.class }}</div>
+            </div>
+
+            <div class="train-timing">
+              <div class="time-block">
+                <div class="time">{{ train.departure }}</div>
+                <div class="label">Keberangkatan</div>
+              </div>
+              <div class="duration">
+                <div class="line"></div>
+                <div class="duration-text">{{ train.duration }}</div>
+              </div>
+              <div class="time-block">
+                <div class="time">{{ train.arrival }}</div>
+                <div class="label">Kedatangan</div>
+              </div>
+            </div>
+
+            <div class="train-details">
+              <div class="detail-item">
+                <span class="label">Kursi Tersedia</span>
+                <span class="value">{{ train.seats_available }} kursi</span>
+              </div>
+              <div class="detail-item">
+                <span class="label">Harga</span>
+                <span class="value price">{{ formatPrice(train.price) }}</span>
+              </div>
+            </div>
+
+            <button class="train-action-btn">Pesan Sekarang</button>
+          </div>
+        </div>
+
+        <div v-else class="no-results">
+          <p>Tidak ada kereta tersedia untuk rute dan tanggal yang dipilih.</p>
+        </div>
+
+        <button class="modal-action-btn" @click="closeSearchModal">Tutup</button>
       </div>
     </div>
   </div>
@@ -764,6 +821,90 @@ const searchTrains = () => {
 .nav-btn:hover {
   background: var(--color-primary-dark);
   transform: translateY(-1px);
+}
+
+/* User Menu */
+.user-menu-wrapper {
+  position: relative;
+}
+
+.user-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-menu-btn:hover {
+  background: #E5E7EB;
+  border-color: #D1D5DB;
+}
+
+.user-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--color-primary);
+  color: white;
+  border-radius: 50%;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.user-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-dark);
+  max-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  min-width: 180px;
+  z-index: 1000;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  color: var(--color-text-dark);
+  font-size: 0.875rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.dropdown-item:hover {
+  background-color: #F3F4F6;
+}
+
+.dropdown-item.logout {
+  color: #EF4444;
+  border-top: 1px solid #E5E7EB;
+}
+
+.dropdown-item.logout:hover {
+  background-color: #FEE2E2;
 }
 
 /* Hero */
@@ -1238,10 +1379,6 @@ const searchTrains = () => {
   letter-spacing: 0.05em;
 }
 
-.label-icon {
-  font-size: 1rem;
-}
-
 .promo-discount {
   font-size: 2rem;
   font-weight: 700;
@@ -1487,12 +1624,6 @@ const searchTrains = () => {
   z-index: 1;
 }
 
-.reward-icon {
-  font-size: 2.75rem;
-  position: relative;
-  z-index: 1;
-}
-
 .reward-amount {
   font-size: 1.875rem;
   font-weight: 700;
@@ -1614,10 +1745,6 @@ const searchTrains = () => {
 
   .reward-amount {
     font-size: 1.5rem;
-  }
-
-  .reward-icon {
-    font-size: 2rem;
   }
 
   .promo-grid,
@@ -1753,6 +1880,12 @@ const searchTrains = () => {
   z-index: 1000;
   padding: 1rem;
   animation: fadeIn 0.3s ease;
+  overflow: hidden;
+}
+
+/* Hide scrollbar when modal is open */
+.modal-overlay::-webkit-scrollbar {
+  display: none;
 }
 
 @keyframes fadeIn {
@@ -1774,6 +1907,16 @@ const searchTrains = () => {
   position: relative;
   animation: slideUp 0.3s ease;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+/* Hide scrollbar in modal content */
+.modal-content::-webkit-scrollbar {
+  width: 0;
+}
+
+.modal-content {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 @keyframes slideUp {
@@ -1834,12 +1977,6 @@ const searchTrains = () => {
   text-align: center;
   margin-bottom: 1.5rem;
   padding: 2rem 2rem 0;
-}
-
-.modal-icon {
-  font-size: 3rem;
-  display: block;
-  margin-bottom: 1rem;
 }
 
 .modal-title {
@@ -1996,10 +2133,6 @@ const searchTrains = () => {
     padding: 1.75rem 1.5rem 1.5rem;
   }
 
-  .modal-icon {
-    font-size: 2.5rem;
-  }
-
   .modal-title {
     font-size: 1.5rem;
   }
@@ -2020,6 +2153,268 @@ const searchTrains = () => {
   .duration-text {
     font-size: 0.9rem;
   }
+}
+
+/* Loading & Alert Styles */
+.loading-indicator {
+  padding: 2rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--color-text-light);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-alert,
+.success-alert {
+  margin-top: 1rem;
+  padding: 1rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.error-alert {
+  background-color: #fee;
+  color: #c33;
+  border-left: 4px solid #c33;
+}
+
+.success-alert {
+  background-color: #efe;
+  color: #3c3;
+  border-left: 4px solid #3c3;
+}
+
+.error-alert p,
+.success-alert p {
+  margin: 0;
+}
+
+/* Search Modal Styles */
+.search-modal {
+  max-width: 700px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.search-modal-header {
+  padding: 2rem;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  color: white;
+  text-align: center;
+  border-radius: 16px 16px 0 0;
+}
+
+.search-modal-header h2 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.search-info {
+  font-size: 0.95rem;
+  opacity: 0.9;
+  margin: 0;
+}
+
+.trains-list {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.train-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 1.5rem;
+  background: var(--color-bg-light);
+  transition: all 0.3s;
+  margin: 1rem 2rem;
+}
+
+.train-card:hover {
+  border-color: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(22, 117, 231, 0.1);
+  transform: translateY(-2px);
+}
+
+.train-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.train-name h3 {
+  font-size: 1.125rem;
+  margin: 0;
+  color: var(--color-text-dark);
+}
+
+.train-number {
+  font-size: 0.875rem;
+  color: var(--color-text-light);
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.train-class {
+  display: inline-block;
+  background: var(--color-primary);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.train-timing {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+}
+
+.time-block {
+  text-align: center;
+  flex: 1;
+}
+
+.time {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-text-dark);
+}
+
+.time-block .label {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-top: 0.25rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.duration {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  gap: 0.5rem;
+}
+
+.duration .line {
+  width: 100%;
+  height: 2px;
+  background: var(--color-primary);
+  flex: 1;
+}
+
+.duration-text {
+  font-size: 0.875rem !important;
+  background: transparent !important;
+  padding: 0 !important;
+  color: var(--color-text-light);
+}
+
+.train-details {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1rem;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.detail-item .label {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.detail-item .value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-dark);
+}
+
+.detail-item .value.price {
+  color: var(--color-primary);
+  font-size: 1.125rem;
+}
+
+.train-action-btn {
+  width: 100%;
+  padding: 0.875rem;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.train-action-btn:hover {
+  background: #0c5bb5;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(22, 117, 231, 0.3);
+}
+
+.no-results {
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--color-text-light);
+}
+
+.no-results p {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.search-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.search-btn:disabled:hover {
+  transform: none;
+  box-shadow: 0 4px 15px rgba(22, 117, 231, 0.3);
+}
+
+/* Hide scrollbar globally when modal is shown */
+:global(body.modal-open) {
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+:global(body.modal-open::-webkit-scrollbar) {
+  display: none;
 }
 
 </style>

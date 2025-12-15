@@ -6,6 +6,12 @@ export const appConfig = {
   description: 'Solusi transportasi kereta api terlengkap di Indonesia',
 }
 
+// Konfigurasi API
+export const apiConfig = {
+  baseURL: 'http://localhost:8000/api/v1',
+  timeout: 10000,
+}
+
 // Konfigurasi warna
 export const colorConfig = {
   primary: '#1675E7',

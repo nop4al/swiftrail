@@ -48,32 +48,7 @@ const seatClasses = ref({
   'Eksekutif 3': generateRows(10, ['A','B','C','D'])
 })
 
-const seatStatus = ref({
-  'Eksekutif 1': {
-    '1A': 'filled_male',
-    '1B': 'filled_female',
-    '1D': 'filled_male',
-    '2D': 'filled_male',
-    '2C': 'filled_male',
-    '3D': 'filled_female',
-    '5A': 'filled_male',
-    '6D': 'filled_male',
-    '6C': 'filled_male',
-    '7D': 'filled_female',
-    '8A': 'filled_female',
-    '8D': 'filled_female'
-  },
-  'Eksekutif 2': {
-    '1A': 'filled_male',
-    '1B': 'filled_male',
-    '1D': 'filled_male',
-    '2D': 'filled_female',
-    '2C': 'filled_female',
-    '4D': 'filled_female',
-    '5A': 'filled_male',
-  },
-  'Eksekutif 3': {}
-})
+const seatStatus = ref({})
 
 const getSeatKey = (row, col) => `${row}${col}`
 

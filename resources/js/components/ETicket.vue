@@ -193,29 +193,7 @@ const route = useRoute();
 const qrCodeElement = ref(null);
 
 // Sample ticket data - in real app, this would come from route params or API
-const ticket = reactive({
-  trainName: 'Argo Bromo Anggrek',
-  trainCode: '2',
-  bookingCode: 'L818KQU',
-  from: 'Jakarta Kota',
-  to: 'Surabaya Pasar Turi',
-  fromCode: 'JKT',
-  toCode: 'SBY',
-  departureTime: '08:20',
-  arrivalTime: '16:25',
-  duration: '8h 5m',
-  departureDate: '2025-12-20',
-  passengerName: 'Muhammad Rizki',
-  nik: '3572024605050001',
-  passengerType: 'UMUM',
-  seatNumber: '/ 0 -',
-  class: 'Eksekutif',
-  coach: '1',
-  seat: 'A12',
-  price: 450000,
-  qrCode: 'KCIESS8335L818KQU1',
-  createdAt: '2025-12-13T13:13:45'
-});
+const ticket = reactive({});
 
 onMounted(() => {
   // Generate QR Code

@@ -3,8 +3,6 @@ import Home from '../components/Home.vue'
 import Login from '../components/Login.vue'
 import Register from '../components/Register.vue'
 import Profile from '../components/Profile.vue'
-import EditProfile from '../components/EditProfile.vue'
-import ChangePassword from '../components/ChangePassword.vue'
 import Admin from '../components/Admin.vue'
 import TrainSchedule from '../components/TrainSchedule.vue'
 import SelectSeat from '../components/SelectSeat.vue'
@@ -12,10 +10,9 @@ import OrderConfirmation from '../components/OrderConfirmation.vue'
 import PaymentMethods from '../components/PaymentMethods.vue'
 import Checkout from '../components/Checkout.vue'
 import PaymentSuccess from '../components/PaymentSuccess.vue'
-import CheckRefund from '../components/CheckRefund.vue'
+import Refund from '../components/Refund.vue';
 import ETicket from '../components/ETicket.vue'
 import MyTicket from '../components/MyTicket.vue'
-import Refund from '../components/Refund.vue'
 import Tracking from '../components/Tracking.vue'
 
 const routes = [
@@ -42,22 +39,14 @@ const routes = [
   {
     path: '/profile',
     name: 'Profile',
-    component: Profile
-  },
-  {
-    path: '/edit-profile',
-    name: 'EditProfile',
-    component: EditProfile
-  },
-  {
-    path: '/change-password',
-    name: 'ChangePassword',
-    component: ChangePassword
+    component: Profile,
+    meta: { requiresAuth: true }
   },
   {
     path: '/admin',
     name: 'Admin',
-    component: Admin
+    component: Admin,
+    meta: { requiresAuth: true }
   },
   {
     path: '/trains',
@@ -91,9 +80,19 @@ const routes = [
     component: PaymentSuccess
   },
   {
+    path: '/refund-center',
+    name: 'RefundCenter',
+    component: Refund
+  },
+  {
     path: '/check-refund',
     name: 'CheckRefund',
-    component: CheckRefund
+    component: Refund
+  },
+  {
+    path: '/refund',
+    name: 'Refund',
+    component: Refund
   },
   {
     path: '/eticket',
@@ -103,12 +102,8 @@ const routes = [
   {
     path: '/my-ticket',
     name: 'MyTicket',
-    component: MyTicket
-  },
-  {
-    path: '/refund',
-    name: 'Refund',
-    component: Refund
+    component: MyTicket,
+    meta: { requiresAuth: true }
   },
   {
     path: '/tracking',
@@ -120,6 +115,22 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes
+})
+
+// Navigation guard to check authentication
+router.beforeEach((to, from, next) => {
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+  const token = localStorage.getItem('authToken')
+
+  if (requiresAuth && !token) {
+    // Show warning modal and prevent navigation
+    if (window.showAuthWarning) {
+      window.showAuthWarning()
+    }
+    next(false)
+  } else {
+    next()
+  }
 })
 
 export default router

@@ -10,7 +10,7 @@ const orderNumber = route.query.orderNumber || ''
 
 const selected = ref('swiftpay')
 const swiftBalance = ref(500000) // mock balance
-const banks = ['MANDIRI', 'BRI', 'BCA', 'BNI']
+const banks = []
 const selectedBank = ref(banks[0])
 
 const swiftSufficient = () => swiftBalance.value >= total
