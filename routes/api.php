@@ -12,7 +12,10 @@ use App\Http\Controllers\Api\{
     LoyaltyController,
     TrainManagementController,
     ScheduleController,
-    RefundController
+    RefundController,
+    TrainScheduleController,
+    BookingController as ApiBookingController,
+    PaymentController
 };
 use App\Http\Controllers\BookingController;
 
@@ -83,7 +86,38 @@ Route::prefix('v1')->middleware('api')->group(function () {
         Route::get('/class/{class}', [TrainController::class, 'getByClass']);
         Route::post('/{id}/calculate-price', [TrainController::class, 'calculatePrice']);
     });
+
+    // ========== Train Schedule - Seat Selection Flow ==========
+    Route::prefix('schedules')->group(function () {
+        // Get all schedules with filtering
+        Route::get('/', [TrainScheduleController::class, 'getSchedules']);
+        // Get schedule details
+        Route::get('/{scheduleId}', [TrainScheduleController::class, 'getScheduleDetail']);
+    });
+
+    // ========== Booking & Seat Management ==========
+    Route::prefix('bookings')->group(function () {
+        // Get available seats for a schedule
+        Route::get('/{scheduleId}/seats', [ApiBookingController::class, 'getAvailableSeats']);
+        // Create a booking
+        Route::post('/', [ApiBookingController::class, 'createBooking']);
+        // Get booking details
+        Route::get('/{bookingId}', [ApiBookingController::class, 'getBooking']);
+        // Cancel booking
+        Route::delete('/{bookingId}', [ApiBookingController::class, 'cancelBooking']);
+    });
+
+    // ========== Payment & Checkout Flow ==========
+    Route::prefix('payments')->group(function () {
+        // Get available payment methods
+        Route::get('/methods', [PaymentController::class, 'getPaymentMethods']);
+        // Get order confirmation
+        Route::get('/confirmation/{bookingId}', [PaymentController::class, 'getOrderConfirmation']);
+        // Process payment
+        Route::post('/process', [PaymentController::class, 'processPayment']);
+    });
 });
+
 
 // ========== API Error Handling ==========
 Route::fallback(function (Request $request) {

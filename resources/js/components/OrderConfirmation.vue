@@ -1,9 +1,17 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { getOrderConfirmation } from '@/utils/api'
+import { getOrderSummary, saveOrderSummary } from '@/utils/storage'
+import { formatPrice, formatDate, showError, showSuccess } from '@/utils/helpers'
 
 const router = useRouter()
 const route = useRoute()
+
+// Loading and error states
+const isLoading = ref(false)
+const hasError = ref(false)
+const errorMessage = ref('')
 
 // build order info from route.query so the page reflects previous selections
 const q = route.query || {}
@@ -28,6 +36,59 @@ const order = ref({
   price: defaultPrice(q.trainClass),
   platformFee: 0
 })
+
+// Fetch order confirmation from API
+const fetchOrderConfirmation = async () => {
+  try {
+    isLoading.value = true
+    hasError.value = false
+    errorMessage.value = ''
+    
+    // Get booking ID from query or storage
+    const bookingId = route.query.bookingId || getOrderSummary()?.bookingId
+    
+    if (!bookingId) {
+      // If no booking ID, use data from query params
+      showSuccess('Konfirmasi pesanan siap ditampilkan')
+      return
+    }
+    
+    // Fetch order confirmation from API
+    const response = await getOrderConfirmation(bookingId)
+    const confirmationData = response.data || response || {}
+    
+    // Update order with API data if available
+    if (confirmationData && Object.keys(confirmationData).length > 0) {
+      order.value = {
+        ...order.value,
+        ...confirmationData,
+        // Keep formatted versions from original if needed
+        date: confirmationData.date || order.value.date,
+        departureTime: confirmationData.departureTime || order.value.departureTime,
+        arrivalTime: confirmationData.arrivalTime || order.value.arrivalTime,
+        price: confirmationData.price || order.value.price,
+        platformFee: confirmationData.platformFee || order.value.platformFee
+      }
+      
+      // Update storage with confirmed order data
+      saveOrderSummary({
+        ...getOrderSummary(),
+        ...confirmationData,
+        confirmedAt: new Date().toISOString()
+      })
+      
+      showSuccess('Konfirmasi pesanan dimuat')
+    }
+  } catch (error) {
+    hasError.value = true
+    errorMessage.value = error.message || 'Gagal memuat konfirmasi pesanan. Silakan coba lagi.'
+    showError(error, 'Konfirmasi Pesanan')
+    console.error('Failed to fetch order confirmation:', error)
+    // Don't prevent the component from rendering - use existing order data
+  } finally {
+    isLoading.value = false
+  }
+}
 
 const totalPayment = computed(() => order.value.price + order.value.platformFee)
 const handlePay = () => {
@@ -74,6 +135,11 @@ const goBack = () => {
     }
   })
 }
+
+// Load order confirmation when component mounts
+onMounted(async () => {
+  await fetchOrderConfirmation()
+})
 </script>
 
 <template>
@@ -91,47 +157,66 @@ const goBack = () => {
     </header>
 
     <div class="content-wrapper">
-
-      <div class="card">
-        <h3 class="card-title">Kereta Pergi</h3>
-
-        <p class="date-row">
-          {{ order.date }} • {{ order.departureTime }} - {{ order.arrivalTime }}
-        </p>
-
-        <p class="route">{{ order.from }} → {{ order.to }}</p>
-
-        <p class="train-info">
-          {{ order.trainName }} • {{ order.classType.toUpperCase() }}
-        </p>
-
-        <div class="passenger-box">
-          <div class="left">
-            <p class="passenger-name">{{ order.passengerName }}</p>
-            <p class="seat-info">{{ order.coach }} • {{ order.seat }}</p>
-          </div>
-          <div class="tag">{{ order.passengerType }}</div>
-        </div>
+      <!-- Loading State -->
+      <div v-if="isLoading" class="loading-state">
+        <div class="spinner"></div>
+        <h3>Memuat Konfirmasi Pesanan...</h3>
+        <p>Tunggu sebentar, kami sedang memproses pesanan Anda</p>
       </div>
 
-      <div class="card">
-        <h3 class="card-title">Rincian Harga</h3>
+      <!-- Error State -->
+      <div v-else-if="hasError && errorMessage" class="error-state">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 7V13M12 17H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <h3>Terjadi Kesalahan</h3>
+        <p>{{ errorMessage }}</p>
+        <button class="retry-btn" @click="fetchOrderConfirmation">Coba Lagi</button>
+      </div>
 
-        <div class="train-row">
-          <div>
-            <p class="train-name">{{ order.trainName }}</p>
-            <span class="pill">{{ order.classType }}</span>
+      <!-- Order Content -->
+      <div v-else class="order-content">
+        <div class="card">
+          <h3 class="card-title">Kereta Pergi</h3>
+
+          <p class="date-row">
+            {{ order.date }} • {{ order.departureTime }} - {{ order.arrivalTime }}
+          </p>
+
+          <p class="route">{{ order.from }} → {{ order.to }}</p>
+
+          <p class="train-info">
+            {{ order.trainName }} • {{ order.classType.toUpperCase() }}
+          </p>
+
+          <div class="passenger-box">
+            <div class="left">
+              <p class="passenger-name">{{ order.passengerName }}</p>
+              <p class="seat-info">{{ order.coach }} • {{ order.seat }}</p>
+            </div>
+            <div class="tag">{{ order.passengerType }}</div>
           </div>
         </div>
 
-        <div class="price-item">
-          <span>Dewasa x1</span>
-          <strong>Rp{{ order.price.toLocaleString() }}</strong>
-        </div>
+        <div class="card">
+          <h3 class="card-title">Rincian Harga</h3>
 
-        <div class="price-item">
-          <span>Platform Fee</span>
-          <strong>Rp{{ order.platformFee }}</strong>
+          <div class="train-row">
+            <div>
+              <p class="train-name">{{ order.trainName }}</p>
+              <span class="pill">{{ order.classType }}</span>
+            </div>
+          </div>
+
+          <div class="price-item">
+            <span>Dewasa x1</span>
+            <strong>Rp{{ order.price.toLocaleString() }}</strong>
+          </div>
+
+          <div class="price-item">
+            <span>Platform Fee</span>
+            <strong>Rp{{ order.platformFee }}</strong>
         </div>
 
         <div class="total-box">
@@ -141,7 +226,7 @@ const goBack = () => {
       </div>
 
       <button class="pay-btn" @click="handlePay">PAY</button>
-
+      </div>
     </div>
   </div>
 </template>
@@ -198,6 +283,88 @@ const goBack = () => {
 
 .content-wrapper { padding: 18px }
 
+/* Loading State */
+.loading-state {
+  text-align: center;
+  padding: 80px 20px 60px;
+  background: white;
+  border-radius: 8px;
+  color: var(--color-text-light);
+  margin-bottom: 18px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 24px;
+  border: 4px solid #f0f0f0;
+  border-top: 4px solid var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-dark);
+  margin-bottom: 8px;
+}
+
+.loading-state p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Error State */
+.error-state {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 8px;
+  color: var(--color-text-light);
+  margin-bottom: 18px;
+}
+
+.error-state svg {
+  margin-bottom: 16px;
+  color: #ef4444;
+  width: 64px;
+  height: 64px;
+}
+
+.error-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-dark);
+  margin-bottom: 8px;
+}
+
+.error-state p {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+}
+
+.retry-btn {
+  padding: 12px 32px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.retry-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(22, 117, 231, 0.3);
+}
+
+.order-content {
+  display: contents;
+}
+
 .card {
   background: var(--color-white);
   padding: 18px;
@@ -231,5 +398,14 @@ const goBack = () => {
 @media (min-width: 768px) {
   .content-wrapper { padding: 28px }
   .card { padding: 20px }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

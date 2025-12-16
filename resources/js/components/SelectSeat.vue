@@ -1,9 +1,17 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { getAvailableSeats, createBooking } from '@/utils/api'
+import { getSelectedSchedule, saveSelectedSeats, saveOrderSummary } from '@/utils/storage'
+import { formatPrice, formatDate, showError, showSuccess } from '@/utils/helpers'
 
 const router = useRouter()
 const route = useRoute()
+
+// Loading and error states
+const isLoading = ref(false)
+const hasError = ref(false)
+const errorMessage = ref('')
 
 const trainId = ref(route.query.trainId)
 const trainName = ref(route.query.trainName)
@@ -75,27 +83,133 @@ const toggleSeat = (row, col) => {
   }
 }
 
+// Fetch available seats from API
+const fetchSeats = async () => {
+  try {
+    isLoading.value = true
+    hasError.value = false
+    errorMessage.value = ''
+    
+    // Get stored schedule data
+    const schedule = getSelectedSchedule()
+    
+    if (!schedule || !schedule.id) {
+      errorMessage.value = 'Data jadwal tidak ditemukan. Silakan pilih jadwal kereta terlebih dahulu.'
+      hasError.value = true
+      return
+    }
+    
+    // Call API to get available seats for this schedule
+    const response = await getAvailableSeats(schedule.id, selectedClass.value)
+    
+    // Process seat availability data from API
+    const seatsData = response.data || response || {}
+    
+    if (seatsData && Object.keys(seatsData).length > 0) {
+      seatStatus.value[selectedClass.value] = seatsData
+      showSuccess('Kursi tersedia dimuat')
+    } else {
+      // No seats data - use default availability (all available)
+      if (!seatStatus.value[selectedClass.value]) {
+        seatStatus.value[selectedClass.value] = {}
+      }
+    }
+  } catch (error) {
+    hasError.value = true
+    errorMessage.value = error.message || 'Gagal memuat ketersediaan kursi. Silakan coba lagi.'
+    showError(error, 'Muatan Kursi')
+    console.error('Failed to fetch seats:', error)
+  } finally {
+    isLoading.value = false
+  }
+}
+
 const goBack = () => {
   router.back()
 }
 
-const saveSeat = () => {
-  const seats = selectedSeats.value.join(',')
-  router.push({
-    path: '/order-confirmation',
-    query: {
-      trainName: trainName.value || '',
-      trainNumber: trainNumber.value || '',
-      fromStation: fromStation.value || '',
-      toStation: toStation.value || '',
-      date: date.value || '',
-      departure: departure.value || '',
-      arrival: arrival.value || '',
-      trainClass: selectedClass.value || '',
-      passengers: passengersParam.value || '1',
-      seats
+const saveSeat = async () => {
+  // Validate seats are selected
+  if (selectedSeats.value.length === 0) {
+    showError(new Error('Tidak ada kursi yang dipilih'), 'Pilih Kursi')
+    return
+  }
+  
+  if (selectedSeats.value.length !== adultCount.value) {
+    showError(new Error(`Pilih ${adultCount.value} kursi untuk penumpang`), 'Pilih Kursi')
+    return
+  }
+  
+  try {
+    isLoading.value = true
+    
+    // Get stored schedule and passenger data
+    const schedule = getSelectedSchedule()
+    const passengerData = JSON.parse(sessionStorage.getItem('passengerData') || '{}')
+    
+    if (!schedule) {
+      showError(new Error('Data jadwal tidak ditemukan'), 'Simpan Kursi')
+      return
     }
-  })
+    
+    // Save selected seats to storage
+    saveSelectedSeats({
+      seats: selectedSeats.value,
+      class: selectedClass.value,
+      trainId: schedule.id,
+      seatCount: selectedSeats.value.length
+    })
+    
+    // Create booking via API
+    const bookingPayload = {
+      schedule_id: schedule.id,
+      class_type: selectedClass.value,
+      seats: selectedSeats.value,
+      adult_count: adultCount.value,
+      child_count: passengerData.children || 0,
+      infant_count: passengerData.infants || 0
+    }
+    
+    const bookingResponse = await createBooking(bookingPayload)
+    const bookingId = bookingResponse.data?.id || bookingResponse.id
+    
+    // Save booking summary to storage
+    saveOrderSummary({
+      bookingId: bookingId,
+      schedule: schedule,
+      seats: selectedSeats.value,
+      class: selectedClass.value,
+      totalPassengers: adultCount.value + (passengerData.children || 0),
+      createdAt: new Date().toISOString()
+    })
+    
+    showSuccess('Kursi berhasil disimpan. Melanjutkan ke konfirmasi pesanan...')
+    
+    // Navigate to order confirmation
+    setTimeout(() => {
+      router.push({
+        path: '/order-confirmation',
+        query: {
+          bookingId: bookingId,
+          trainName: trainName.value || '',
+          trainNumber: trainNumber.value || '',
+          fromStation: fromStation.value || '',
+          toStation: toStation.value || '',
+          date: date.value || '',
+          departure: departure.value || '',
+          arrival: arrival.value || '',
+          trainClass: selectedClass.value || '',
+          passengers: passengersParam.value || '1',
+          seats: selectedSeats.value.join(',')
+        }
+      })
+    }, 500)
+  } catch (error) {
+    showError(error, 'Simpan Kursi')
+    console.error('Failed to save seats:', error)
+  } finally {
+    isLoading.value = false
+  }
 }
 
 const selectedSeatsDisplay = computed(() => {
@@ -116,6 +230,12 @@ const seatInfoDisplay = computed(() => {
     seat: `${selectedClass.value} / Seat ${currentSelectedSeat.value}`,
     show: true
   }
+})
+
+// Load available seats when component mounts
+import { onMounted } from 'vue'
+onMounted(async () => {
+  await fetchSeats()
 })
 </script>
 
@@ -147,80 +267,101 @@ const seatInfoDisplay = computed(() => {
           </div>
       </div>
 
-      <!-- Seat Info -->
-      <div v-if="seatInfoDisplay.show" class="seat-info">
-        <div class="passenger-info">
-          <span class="passenger-name">{{ seatInfoDisplay.name }}</span>
-          <span class="passenger-seat">{{ seatInfoDisplay.seat }}</span>
-        </div>
+      <!-- Loading State -->
+      <div v-if="isLoading" class="loading-container">
+        <div class="spinner"></div>
+        <h3>Memuat Ketersediaan Kursi...</h3>
+        <p>Tunggu sebentar, kami sedang memproses data kursi Anda</p>
       </div>
 
-      <!-- Seat Legend -->
-      <div class="seat-legend">
-        <div class="legend-item">
-          <div class="legend-seat available"></div>
-          <span>Available</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-seat chosen"></div>
-          <span>Chosen</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-seat filled"></div>
-          <span>L</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-seat filled filled-female"></div>
-          <span>P</span>
-        </div>
+      <!-- Error State -->
+      <div v-else-if="hasError" class="error-container">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+          <path d="M12 7V13M12 17H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <h3>Terjadi Kesalahan</h3>
+        <p>{{ errorMessage }}</p>
+        <button class="retry-btn" @click="fetchSeats">Coba Lagi</button>
       </div>
 
-      <!-- Seat Grid -->
-      <div class="seat-container">
-        <!-- Class Tabs -->
-        <div class="class-tabs">
-          <button 
-            v-for="(seats, className) in seatClasses"
-            :key="className"
-            :class="['class-tab', { active: selectedClass === className }]"
-            @click="selectedClass = className"
-          >
-            {{ className }}
-          </button>
+      <!-- Seat Selection Content -->
+      <div v-else class="seats-content">
+        <!-- Seat Info -->
+        <div v-if="seatInfoDisplay.show" class="seat-info">
+          <div class="passenger-info">
+            <span class="passenger-name">{{ seatInfoDisplay.name }}</span>
+            <span class="passenger-seat">{{ seatInfoDisplay.seat }}</span>
+          </div>
         </div>
 
-        <!-- Seats Grid -->
-        <div class="seats-grid">
-          <div v-for="row in seatClasses[selectedClass]" :key="row.row" class="seat-row">
-            <div class="seat-row-content">
-              <div class="row-number">{{ row.row }}</div>
-              <div class="row-seats-container">
-                <div class="row-seats-left">
-                  <button 
-                    v-for="col in ['A', 'B']"
-                    :key="col"
-                    :class="['seat', getSeatStatus(row.row, col)]"
-                    :disabled="getSeatStatus(row.row, col) !== 'available' && getSeatStatus(row.row, col) !== 'chosen'"
-                    @click="toggleSeat(row.row, col)"
-                  >
-                    <span v-if="getSeatStatus(row.row, col) === 'filled_male'" class="seat-gender">L</span>
-                    <span v-else-if="getSeatStatus(row.row, col) === 'filled_female'" class="seat-gender">P</span>
-                    <span v-else class="seat-label">{{ col }}</span>
-                  </button>
-                </div>
-                <div class="row-gap"></div>
-                <div class="row-seats-right">
-                  <button 
-                    v-for="col in ['C', 'D']"
-                    :key="col"
-                    :class="['seat', getSeatStatus(row.row, col)]"
-                    :disabled="getSeatStatus(row.row, col) !== 'available' && getSeatStatus(row.row, col) !== 'chosen'"
-                    @click="toggleSeat(row.row, col)"
-                  >
-                    <span v-if="getSeatStatus(row.row, col) === 'filled_male'" class="seat-gender">L</span>
-                    <span v-else-if="getSeatStatus(row.row, col) === 'filled_female'" class="seat-gender">P</span>
-                    <span v-else class="seat-label">{{ col }}</span>
-                  </button>
+        <!-- Seat Legend -->
+        <div class="seat-legend">
+          <div class="legend-item">
+            <div class="legend-seat available"></div>
+            <span>Available</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-seat chosen"></div>
+            <span>Chosen</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-seat filled"></div>
+            <span>L</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-seat filled filled-female"></div>
+            <span>P</span>
+          </div>
+        </div>
+
+        <!-- Seat Grid -->
+        <div class="seat-container">
+          <!-- Class Tabs -->
+          <div class="class-tabs">
+            <button 
+              v-for="(seats, className) in seatClasses"
+              :key="className"
+              :class="['class-tab', { active: selectedClass === className }]"
+              @click="selectedClass = className"
+            >
+              {{ className }}
+            </button>
+          </div>
+
+          <!-- Seats Grid -->
+          <div class="seats-grid">
+            <div v-for="row in seatClasses[selectedClass]" :key="row.row" class="seat-row">
+              <div class="seat-row-content">
+                <div class="row-number">{{ row.row }}</div>
+                <div class="row-seats-container">
+                  <div class="row-seats-left">
+                    <button 
+                      v-for="col in ['A', 'B']"
+                      :key="col"
+                      :class="['seat', getSeatStatus(row.row, col)]"
+                      :disabled="getSeatStatus(row.row, col) !== 'available' && getSeatStatus(row.row, col) !== 'chosen'"
+                      @click="toggleSeat(row.row, col)"
+                    >
+                      <span v-if="getSeatStatus(row.row, col) === 'filled_male'" class="seat-gender">L</span>
+                      <span v-else-if="getSeatStatus(row.row, col) === 'filled_female'" class="seat-gender">P</span>
+                      <span v-else class="seat-label">{{ col }}</span>
+                    </button>
+                  </div>
+                  <div class="row-gap"></div>
+                  <div class="row-seats-right">
+                    <button 
+                      v-for="col in ['C', 'D']"
+                      :key="col"
+                      :class="['seat', getSeatStatus(row.row, col)]"
+                      :disabled="getSeatStatus(row.row, col) !== 'available' && getSeatStatus(row.row, col) !== 'chosen'"
+                      @click="toggleSeat(row.row, col)"
+                    >
+                      <span v-if="getSeatStatus(row.row, col) === 'filled_male'" class="seat-gender">L</span>
+                      <span v-else-if="getSeatStatus(row.row, col) === 'filled_female'" class="seat-gender">P</span>
+                      <span v-else class="seat-label">{{ col }}</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -355,6 +496,88 @@ const seatInfoDisplay = computed(() => {
   font-size: 12px;
   color: var(--color-text-light);
   margin: 4px 0 0 0;
+}
+
+/* Loading State */
+.loading-container {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+  color: var(--color-text-light);
+  margin-bottom: 16px;
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 24px;
+  border: 4px solid #f0f0f0;
+  border-top: 4px solid var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-container h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-dark);
+  margin-bottom: 8px;
+}
+
+.loading-container p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Error State */
+.error-container {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+  color: var(--color-text-light);
+  margin-bottom: 16px;
+}
+
+.error-container svg {
+  margin-bottom: 16px;
+  color: #ef4444;
+  width: 64px;
+  height: 64px;
+}
+
+.error-container h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-dark);
+  margin-bottom: 8px;
+}
+
+.error-container p {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+}
+
+.retry-btn {
+  padding: 12px 32px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.retry-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(22, 117, 231, 0.3);
+}
+
+.seats-content {
+  display: contents;
 }
 
 /* Seat Info */
@@ -779,6 +1002,15 @@ const seatInfoDisplay = computed(() => {
     padding: 12px 18px;
     font-size: 12px;
     margin-bottom: 16px;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

@@ -10,6 +10,7 @@ import {
   fetchStations,
   searchTrains as apiSearchTrains
 } from '../utils/api.js'
+import { dummyTrains, getTrainsByRoute } from '@/utils/dummyData'
 
 // Router
 const router = useRouter()
@@ -21,8 +22,19 @@ const showUserMenu = ref(false)
 
 // Search form data
 const activeTab = ref('antar-kota')
+
+// Data stasiun tersedia (6 pilihan)
+const stationList = [
+  { name: 'Gambir', code: 'GMR', fullName: 'Gambir (GMR)' },
+  { name: 'Cirebon', code: 'CRB', fullName: 'Cirebon (CRB)' },
+  { name: 'Pekalongan', code: 'PKL', fullName: 'Pekalongan (PKL)' },
+  { name: 'Semarang Tawang', code: 'SMG', fullName: 'Semarang Tawang (SMG)' },
+  { name: 'Bojonegoro', code: 'BJN', fullName: 'Bojonegoro (BJN)' },
+  { name: 'Surabaya Pasar Turi', code: 'SPT', fullName: 'Surabaya Pasar Turi (SPT)' }
+]
+
 const fromStation = ref('Gambir (GMR)')
-const toStation = ref('Bandung (BD)')
+const toStation = ref('Semarang Tawang (SMG)')
 const travelDate = ref(new Date().toISOString().split('T')[0])
 
 // Data dari API
@@ -158,6 +170,9 @@ const searchTrains = async () => {
     isSearching.value = false
   }
 }
+
+// Ambil kereta dari SPT ke GMR
+const trains = getTrainsByRoute('SPT', 'GMR', '2025-12-20')
 </script>
 
 <template>
@@ -236,12 +251,14 @@ const searchTrains = async () => {
                   <circle cx="16" cy="14" r="1" fill="currentColor"/>
                 </svg>
               </span>
-              <input 
-                type="text" 
+              <select 
                 v-model="fromStation"
                 class="form-input"
-                placeholder="Pilih stasiun keberangkatan"
-              />
+              >
+                <option v-for="station in stationList" :key="station.code" :value="station.fullName">
+                  {{ station.fullName }}
+                </option>
+              </select>
             </div>
           </div>
 
@@ -260,12 +277,14 @@ const searchTrains = async () => {
                   <circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2"/>
                 </svg>
               </span>
-              <input 
-                type="text" 
+              <select 
                 v-model="toStation"
                 class="form-input"
-                placeholder="Pilih stasiun tujuan"
-              />
+              >
+                <option v-for="station in stationList" :key="station.code" :value="station.fullName">
+                  {{ station.fullName }}
+                </option>
+              </select>
             </div>
           </div>
 
@@ -1921,6 +1940,12 @@ const searchTrains = async () => {
   border-bottom: 1px solid #e5e7eb;
 }
 
+.train-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
 .train-name h3 {
   font-size: 1.125rem;
   margin: 0;
@@ -2075,6 +2100,5 @@ const searchTrains = async () => {
 :global(body.modal-open::-webkit-scrollbar) {
   display: none;
 }
-
 </style>
 

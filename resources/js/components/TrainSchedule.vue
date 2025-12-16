@@ -1,6 +1,10 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { getSchedules } from '@/utils/api'
+import { saveSelectedSchedule, savePassengerData } from '@/utils/storage'
+import { formatPrice, formatDate, showError, showSuccess } from '@/utils/helpers'
+import { dummyTrains, getTrainsByRoute } from '@/utils/dummyData'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,6 +24,11 @@ const fromStation = ref(route.query.from || 'Gambir (GMR)')
 const toStation = ref(route.query.to || 'Bandung (BD)')
 const travelDate = ref(route.query.date || new Date().toISOString().split('T')[0])
 
+// Loading and error states
+const isLoading = ref(false)
+const hasError = ref(false)
+const errorMessage = ref('')
+
 // Format date for display (e.g., YYYY-MM-DD => 03 Des)
 const formatDateDisplay = () => {
   if (!travelDate.value) return '03 Des'
@@ -28,7 +37,7 @@ const formatDateDisplay = () => {
   return `${d.getDate()} ${months[d.getMonth()]}`
 }
 
-const trains = ref([])
+const trains = ref(getTrainsByRoute('JK', 'SG', '2025-12-20'))
 
 const filteredTrains = computed(() => {
   let result = trains.value
@@ -101,20 +110,36 @@ const savePassengers = () => {
 }
 
 const goToSelectSeat = (train) => {
+  // Save selected schedule to storage for next component
+  saveSelectedSchedule({
+    id: train.id,
+    trainName: train.name,
+    trainNumber: train.number,
+    departure: train.departure,
+    arrival: train.arrival,
+    duration: train.duration,
+    fromStation: fromStation.value,
+    toStation: toStation.value,
+    date: travelDate.value,
+    classes: train.classes || []
+  })
+  
+  // Save passenger information
+  savePassengerData({
+    adults: adultCount.value,
+    children: childCount.value,
+    infants: infantCount.value,
+    totalPassengers: adultCount.value + childCount.value + infantCount.value
+  })
+  
+  // Navigate to seat selection
   router.push({
     path: '/select-seat',
     query: {
-      trainId: train.id,
+      scheduleId: train.id,
       trainName: train.name,
       trainNumber: train.number,
-      departure: train.departure,
-      arrival: train.arrival,
-      // prefer the user's search inputs (from/to/date) so selection flows keep context
-      fromStation: fromStation.value || train.fromStation,
-      toStation: toStation.value || train.toStation,
-      date: travelDate.value || train.date,
-      passengers: `${adultCount.value}${childCount.value}${infantCount.value}`,
-      trainClass: train.classes && train.classes.length ? train.classes[0].name : ''
+      passengers: `${adultCount.value}${childCount.value}${infantCount.value}`
     }
   })
 }
@@ -146,6 +171,56 @@ const incrementInfant = () => {
 const decrementInfant = () => {
   if (infantCount.value > 0) infantCount.value--
 }
+
+// Fetch schedules from sessionStorage or API
+const fetchSchedules = async () => {
+  try {
+    isLoading.value = true
+    hasError.value = false
+    errorMessage.value = ''
+    
+    // Check if search results are in sessionStorage
+    const searchResultsStr = sessionStorage.getItem('searchResults')
+    
+    if (searchResultsStr) {
+      // Use search results from sessionStorage
+      const searchData = JSON.parse(searchResultsStr)
+      trains.value = searchData.trains || []
+      fromStation.value = searchData.fromStation
+      toStation.value = searchData.toStation
+      travelDate.value = searchData.travelDate
+      sessionStorage.removeItem('searchResults') // Clear after using
+    } else {
+      // Fallback: try to get from API or use dummy data
+      const fromCode = fromStation.value.match(/\(([^)]+)\)/)?.[1] || 'GMR'
+      const toCode = toStation.value.match(/\(([^)]+)\)/)?.[1] || 'SMG'
+      trains.value = getTrainsByRoute(fromCode, toCode, travelDate.value)
+    }
+    
+    if (trains.value.length === 0) {
+      errorMessage.value = 'Tidak ada jadwal kereta yang tersedia untuk rute ini'
+    }
+    
+  } catch (error) {
+    hasError.value = true
+    errorMessage.value = error.message || 'Gagal memuat jadwal kereta. Silakan coba lagi.'
+    console.error('Error fetching schedules:', error)
+    trains.value = []
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Search function with new parameters
+const searchSchedules = async () => {
+  await fetchSchedules()
+  filterPanel.value = false
+}
+
+// Load schedules when component mounts
+onMounted(async () => {
+  await fetchSchedules()
+})
 
 const backToHome = () => {
   router.push('/home')
@@ -391,8 +466,26 @@ const searchAgain = () => {
 
       <!-- Train List -->
       <main class="train-list">
+        <!-- Loading State -->
+        <div v-if="isLoading" class="loading-state">
+          <div class="spinner"></div>
+          <h3>Mencari Jadwal Kereta...</h3>
+          <p>Tunggu sebentar, kami sedang mencari jadwal terbaik untuk Anda</p>
+        </div>
+
+        <!-- Error State -->
+        <div v-else-if="hasError" class="error-state">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 7V13M12 17H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <h3>Terjadi Kesalahan</h3>
+          <p>{{ errorMessage }}</p>
+          <button class="retry-btn" @click="fetchSchedules">Coba Lagi</button>
+        </div>
+
         <!-- Empty State -->
-        <div v-if="filteredTrains.length === 0" class="empty-state">
+        <div v-else-if="filteredTrains.length === 0" class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
             <path d="M8 12H16M12 8V16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -1535,6 +1628,91 @@ const searchAgain = () => {
   .save-btn {
     padding: 10px 14px;
     font-size: 13px;
+  }
+}
+
+/* Loading State */
+.loading-state {
+  text-align: center;
+  padding: 80px 20px 60px;
+  background: white;
+  border-radius: 8px;
+  color: var(--color-text-light);
+}
+
+.spinner {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 24px;
+  border: 4px solid #f0f0f0;
+  border-top: 4px solid var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-dark);
+  margin-bottom: 8px;
+}
+
+.loading-state p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Error State */
+.error-state {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 8px;
+  color: var(--color-text-light);
+}
+
+.error-state svg {
+  margin-bottom: 16px;
+  color: #ef4444;
+  width: 64px;
+  height: 64px;
+}
+
+.error-state h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text-dark);
+  margin-bottom: 8px;
+}
+
+.error-state p {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+}
+
+.retry-btn {
+  padding: 12px 32px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.retry-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(22, 117, 231, 0.3);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 

@@ -1,10 +1,19 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { processPayment } from '@/utils/api'
+import { getOrderSummary, getPaymentData, clearAllData } from '@/utils/storage'
+import { formatPrice, showError, showSuccess } from '@/utils/helpers'
 import qrisLogo from '../components/logo QRIS.png'
 
 const router = useRouter()
 const route = useRoute()
+
+// Loading and error states
+const isProcessing = ref(false)
+const hasError = ref(false)
+const errorMessage = ref('')
+const paymentStatus = ref(null) // 'success' or 'failed'
 
 const total = Number(route.query.total || 0)
 const orderNumber = route.query.orderNumber || ''
@@ -43,29 +52,81 @@ const paymentMethodDisplay = computed(() => {
   return 'Metode Pembayaran'
 })
 
-const goBack = () => router.back()
-
-const handlePayment = () => {
-  // Navigate to payment success page with all booking data
-  router.push({
-    path: '/payment-success',
-    query: {
-      orderNumber,
-      total: finalTotal,
-      paymentMethod,
-      trainName,
-      trainNumber,
-      trainClass,
-      fromStation,
-      toStation,
-      date,
-      departure,
-      arrival,
-      seats: seatsString,
-      passengerName
+// Process payment via API
+const processPaymentTransaction = async () => {
+  try {
+    isProcessing.value = true
+    hasError.value = false
+    errorMessage.value = ''
+    paymentStatus.value = null
+    
+    // Get booking and payment data from storage
+    const orderSummary = getOrderSummary()
+    const paymentData = getPaymentData()
+    
+    if (!orderSummary || !orderSummary.bookingId) {
+      hasError.value = true
+      errorMessage.value = 'Data pesanan tidak ditemukan. Silakan coba kembali.'
+      showError(new Error('Missing booking data'), 'Pembayaran')
+      return
     }
-  })
+    
+    // Call API to process payment
+    const paymentPayload = {
+      booking_id: orderSummary.bookingId,
+      method: paymentMethod,
+      bank: paymentMethod === 'ib' ? selectedBank : null,
+      amount: finalTotal,
+      order_number: orderNumber
+    }
+    
+    const response = await processPayment(paymentPayload)
+    const paymentResult = response.data || response || {}
+    
+    if (paymentResult.status === 'success' || paymentResult.success === true) {
+      paymentStatus.value = 'success'
+      showSuccess('Pembayaran berhasil diproses!')
+      
+      // Clear storage and navigate to success page
+      setTimeout(() => {
+        router.push({
+          path: '/payment-success',
+          query: {
+            orderNumber: paymentResult.orderNumber || orderNumber,
+            bookingId: paymentResult.bookingId || orderSummary.bookingId,
+            total: finalTotal,
+            paymentMethod,
+            trainName,
+            trainNumber,
+            trainClass,
+            fromStation,
+            toStation,
+            date,
+            departure,
+            arrival,
+            seats: seatsString,
+            passengerName
+          }
+        })
+      }, 1000)
+    } else {
+      paymentStatus.value = 'failed'
+      hasError.value = true
+      errorMessage.value = paymentResult.message || 'Pembayaran gagal. Silakan coba lagi.'
+      showError(new Error(errorMessage.value), 'Pembayaran')
+    }
+  } catch (error) {
+    paymentStatus.value = 'failed'
+    hasError.value = true
+    errorMessage.value = error.message || 'Gagal memproses pembayaran. Silakan coba lagi.'
+    showError(error, 'Pembayaran')
+    console.error('Payment processing failed:', error)
+  } finally {
+    isProcessing.value = false
+  }
 }
+
+const goBack = () => router.back()
 </script>
 
 <template>
@@ -176,7 +237,21 @@ const handlePayment = () => {
 
     <!-- Payment Button -->
     <div class="sticky-actions">
-      <button class="pay-button" @click="handlePayment">LANJUTKAN PEMBAYARAN</button>
+      <button 
+        v-if="!paymentStatus"
+        class="pay-button" 
+        @click="processPaymentTransaction"
+        :disabled="isProcessing"
+      >
+        <span v-if="isProcessing" class="spinner-small"></span>
+        {{ isProcessing ? 'Memproses...' : 'LANJUTKAN PEMBAYARAN' }}
+      </button>
+      <div v-else-if="paymentStatus === 'success'" class="status-message success">
+        ✓ Pembayaran berhasil!
+      </div>
+      <div v-else class="status-message error">
+        ✗ Pembayaran gagal. {{ errorMessage }}
+      </div>
     </div>
   </div>
 </template>
@@ -584,7 +659,58 @@ const handlePayment = () => {
   transform: translateY(0);
 }
 
+.pay-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.spinner-small {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.status-message {
+  flex: 1;
+  padding: 16px;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 14px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-message.success {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.status-message.error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
 /* Responsive */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 640px) {
   .content-wrapper {
     padding: 12px;
