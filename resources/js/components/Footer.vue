@@ -1,6 +1,6 @@
 <template>
-  <!-- Footer hanya muncul jika sudah login atau di halaman Beranda -->
-  <footer v-if="isLoggedIn || isHomePage" class="footer">
+  <!-- Footer hanya muncul jika sudah login atau di halaman Beranda, tapi tidak di Admin page -->
+  <footer v-if="(isLoggedIn || isHomePage) && !isAdminPage" class="footer">
     <div class="footer-container">
       <div class="footer-brand">
         <div class="logo">
@@ -32,10 +32,10 @@
         </div>
         <div class="footer-col">
           <h4>Bantuan</h4>
-          <a href="#">FAQ</a>
-          <a href="#">Syarat & Ketentuan</a>
-          <a href="#">Kebijakan Privasi</a>
-          <a href="#">Pusat Bantuan</a>
+          <router-link to="/pusat-bantuan">Pusat Bantuan</router-link>
+          <router-link to="/syarat-dan-ketentuan">Syarat & Ketentuan</router-link>
+          <router-link to="/kebijakan-privasi">Kebijakan Privasi</router-link>
+          <a href="#">Kontak</a>
         </div>
       </div>
     </div>
@@ -61,6 +61,11 @@ const isLoggedIn = computed(() => {
 // Check apakah di halaman Beranda (home)
 const isHomePage = computed(() => {
   return route.path === '/' || route.path === '/home'
+})
+
+// Check apakah di Admin page
+const isAdminPage = computed(() => {
+  return route.path === '/admin'
 })
 
 // Listen untuk perubahan storage

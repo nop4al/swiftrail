@@ -14,6 +14,9 @@ import Refund from '../components/Refund.vue';
 import Ticket from '../components/Ticket.vue'
 import Tracking from '../components/Tracking.vue'
 import SwiftPay from '../components/SwiftPay.vue'
+import FAQ from '../components/FAQ.vue'
+import TermsAndConditions from '../components/TermsAndConditions.vue'
+import PrivacyPolicy from '../components/PrivacyPolicy.vue'
 
 const routes = [
   {
@@ -109,6 +112,21 @@ const routes = [
     path: '/swiftpay',
     name: 'SwiftPay',
     component: SwiftPay
+  },
+  {
+    path: '/pusat-bantuan',
+    name: 'PusatBantuan',
+    component: FAQ
+  },
+  {
+    path: '/syarat-dan-ketentuan',
+    name: 'TermsAndConditions',
+    component: TermsAndConditions
+  },
+  {
+    path: '/kebijakan-privasi',
+    name: 'PrivacyPolicy',
+    component: PrivacyPolicy
   }
 ]
 

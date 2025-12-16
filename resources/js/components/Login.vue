@@ -45,12 +45,8 @@ const handleLogin = async () => {
       // Trigger event untuk update header dan component lain (SETELAH save data)
       window.dispatchEvent(new Event('auth-changed'))
       
-      // Redirect berdasarkan role
-      if (data.data.user.role === 'admin') {
-        router.push('/admin')
-      } else {
-        router.push('/home')
-      }
+      // Redirect semua user (termasuk admin) ke home, admin bisa akses admin panel via menu
+      router.push('/home')
     } else {
       window.dispatchEvent(new Event('auth-changed'))
       router.push('/home')

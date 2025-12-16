@@ -1,31 +1,5 @@
   <template>
   <div class="tracking-page">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-container">
-        <div class="logo">
-          <div class="logo-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="24" height="24" rx="6" fill="#1675E7"/>
-              <path d="M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V14C18 15.1046 17.1046 16 16 16H8C6.89543 16 6 15.1046 6 14V8Z" fill="white"/>
-              <rect x="8" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-              <rect x="13" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-              <circle cx="9" cy="18" r="1.5" fill="white"/>
-              <circle cx="15" cy="18" r="1.5" fill="white"/>
-            </svg>
-          </div>
-          <div class="logo-text">
-            <span class="logo-title">SwiftRail</span>
-            <span class="logo-subtitle">SUPER APP</span>
-          </div>
-        </div>
-        
-        <nav class="nav">
-          <router-link to="/profile" class="nav-link">Profile</router-link>
-        </nav>
-      </div>
-    </header>
-
     <div class="tracking-container">
 
     <!-- Map Card -->
@@ -356,98 +330,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Header */
-.header {
-  background: var(--color-white);
-  border-bottom: 1px solid #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  position: sticky;
-  top: 0;
-  z-index: 50;
-}
-
-.header-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 80px;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  text-decoration: none;
-  color: inherit;
-}
-
-.logo-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-}
-
-.logo-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.logo-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--color-primary);
-  line-height: 1;
-}
-
-.logo-subtitle {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--color-secondary);
-  letter-spacing: 0.05em;
-  line-height: 1;
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-}
-
-.nav-link {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--color-text-light);
-  text-decoration: none;
-  transition: color 0.3s ease;
-}
-
-.nav-link:hover {
-  color: var(--color-primary);
-}
-
-.nav-btn {
-  padding: 10px 20px;
-  background: var(--color-primary);
-  color: var(--color-white);
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.nav-btn:hover {
-  background: var(--color-primary-dark);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(22, 117, 231, 0.3);
-}
+/* Card Styles */
 
 /* Main Container */
 .tracking-page {

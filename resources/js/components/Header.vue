@@ -52,6 +52,19 @@
                 </svg>
                 Profile
               </router-link>
+              
+              <!-- Admin Panel - hanya untuk admin -->
+              <div v-if="isAdmin" class="dropdown-divider"></div>
+              <router-link v-if="isAdmin" to="/admin" class="dropdown-item admin-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="3" y="3" width="8" height="8" stroke="currentColor" stroke-width="2"/>
+                  <rect x="13" y="3" width="8" height="8" stroke="currentColor" stroke-width="2"/>
+                  <rect x="3" y="13" width="8" height="8" stroke="currentColor" stroke-width="2"/>
+                  <rect x="13" y="13" width="8" height="8" stroke="currentColor" stroke-width="2"/>
+                </svg>
+                Admin Panel
+              </router-link>
+              
               <button @click="handleLogout" class="dropdown-item logout-item">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -111,6 +124,10 @@ const userInitial = computed(() => {
 
 const userId = computed(() => {
   return userProfile.value?.user_id || 'ID tidak tersedia'
+})
+
+const isAdmin = computed(() => {
+  return userProfile.value?.role === 'admin'
 })
 
 // Load user profile dari localStorage
@@ -442,6 +459,22 @@ onUnmounted(() => {
 .logout-item:hover {
   background: #fef2f2;
   color: #ea580c;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 0.5rem 0;
+}
+
+.admin-item {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.admin-item:hover {
+  background: #faf5ff;
+  color: #6d28d9;
 }
 
 @media (max-width: 768px) {

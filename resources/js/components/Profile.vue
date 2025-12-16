@@ -495,12 +495,24 @@ const startEditProfile = (tab = 'biodata') => {
   formData.city = userProfile.value.city
   activeEditTab.value = tab
   isEditMode.value = true
+  // Clear errors on edit start
+  Object.keys(errors).forEach(key => {
+    errors[key] = ''
+  })
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const cancelEdit = () => {
   isEditMode.value = false
   activeTab.value = 'profil'
   activeEditTab.value = 'biodata'
+  // Clear errors on cancel
+  Object.keys(errors).forEach(key => {
+    errors[key] = ''
+  })
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const formatCurrency = (amount) => {

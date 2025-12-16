@@ -9,9 +9,9 @@ const router = useRouter()
 const route = useRoute()
 const authWarningRef = ref(null)
 
-// Check apakah route saat ini adalah login atau register
+// Check apakah route saat ini adalah login atau register atau admin
 const hideHeaderFooter = computed(() => {
-  return route.path === '/login' || route.path === '/register'
+  return route.path === '/login' || route.path === '/register' || route.path === '/admin'
 })
 
 onMounted(() => {
