@@ -8,8 +8,7 @@ const router = useRouter()
 const showUserMenu = ref(false)
 
 // Active Tab State
-const activeTab = ref('profil') // 'profil', 'tiket', 'loyalty'
-const activeTicketTab = ref('semua') // For ticket filtering
+const activeTab = ref('profil') // 'profil', 'loyalty'
 const activeEditTab = ref('biodata') // For edit profile: 'biodata', 'password'
 const isEditMode = ref(false) // Toggle between view and edit mode
 
@@ -78,9 +77,19 @@ const userLoyalty = ref({})
 const fetchUserProfile = async () => {
   try {
     isLoading.value = true
-    const token = localStorage.getItem('userToken')
+    const token = localStorage.getItem('authToken')
+    const profileFromStorage = localStorage.getItem('userProfile')
     
     if (!token) {
+      // Jika ada data di localStorage, gunakan itu dulu
+      if (profileFromStorage) {
+        try {
+          userProfile.value = JSON.parse(profileFromStorage)
+          return
+        } catch (e) {
+          console.error('Error parsing stored profile:', e)
+        }
+      }
       router.push('/login')
       return
     }
@@ -96,9 +105,30 @@ const fetchUserProfile = async () => {
 
     if (!response.ok) {
       if (response.status === 401) {
-        localStorage.removeItem('userToken')
-        router.push('/login')
+        localStorage.removeItem('authToken')
+        // Jika ada data di localStorage, gunakan itu sambil redirect
+        if (profileFromStorage) {
+          try {
+            userProfile.value = JSON.parse(profileFromStorage)
+          } catch (e) {
+            console.error('Error parsing stored profile:', e)
+          }
+        }
+        // Tunggu sebentar baru redirect
+        setTimeout(() => {
+          router.push('/login')
+        }, 500)
         return
+      }
+      // Jika ada error lain, gunakan data dari localStorage jika tersedia
+      if (profileFromStorage) {
+        try {
+          userProfile.value = JSON.parse(profileFromStorage)
+          console.warn('Using cached profile data due to API error')
+          return
+        } catch (e) {
+          console.error('Error parsing stored profile:', e)
+        }
       }
       throw new Error(`HTTP ${response.status}`)
     }
@@ -194,8 +224,6 @@ const membershipLevels = ref([])
 
 const pointsHistory = ref([])
 
-const ticketTabs = ref([])
-
 const showLogoutConfirm = ref(false)
 
 // Loyalty data - Update the existing userLoyalty
@@ -215,7 +243,7 @@ const myLoyaltyRewards = ref([])
 // Fetch user loyalty data (unified endpoint)
 const fetchUserLoyalty = async () => {
   try {
-    const token = localStorage.getItem('userToken')
+    const token = localStorage.getItem('authToken')
     if (!token) return
 
     const response = await fetch('/api/v1/loyalty', {
@@ -448,9 +476,12 @@ const handleEditSubmit = async () => {
 }
 
 const handleLogout = () => {
-  localStorage.removeItem('userToken')
+  localStorage.removeItem('authToken')
   localStorage.removeItem('userData')
+  localStorage.removeItem('userProfile')
   showUserMenu.value = false
+  // Trigger event untuk update header dan component lain
+  window.dispatchEvent(new Event('auth-changed'))
   router.push('/login')
 }
 
@@ -591,34 +622,6 @@ const formatCurrency = (amount) => {
           </div>
         </div>
 
-        <!-- Tickets Tab Content -->
-        <div v-if="activeTab === 'tiket'" class="tab-content tickets-content">
-          <!-- Ticket Tabs -->
-          <div class="ticket-tabs">
-            <button 
-              v-for="tab in ticketTabs" 
-              :key="tab.id"
-              :class="['ticket-tab', { active: activeTicketTab === tab.id }]"
-              @click="activeTicketTab = tab.id"
-            >
-              {{ tab.label }}
-            </button>
-          </div>
-
-          <!-- Empty State -->
-          <div class="empty-state">
-            <div class="empty-icon">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 5a2 2 0 0 1 2-2h4.586a2 2 0 0 1 1.414.586l7.414 7.414a2 2 0 0 1 0 2.828l-7.414 7.414a2 2 0 0 1-2.828 0L3 12.414V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-                <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-              </svg>
-            </div>
-            <h3 class="empty-title">Belum ada tiket</h3>
-            <p class="empty-description">Anda belum membeli tiket apapun untuk kategori ini</p>
-            <router-link to="/" class="empty-link">Cari tiket sekarang</router-link>
-          </div>
-        </div>
-
         <!-- Loyalty Tab Content -->
         <div v-if="activeTab === 'loyalty'" class="tab-content loyalty-content">
           <!-- Status Card -->
@@ -744,13 +747,6 @@ const formatCurrency = (amount) => {
 
         <!-- Menu Items -->
         <div class="menu-list">
-          <button class="menu-item" :class="{ active: activeTab === 'tiket' }" @click="activeTab = 'tiket'">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 5a2 2 0 0 1 2-2h4.586a2 2 0 0 1 1.414.586l7.414 7.414a2 2 0 0 1 0 2.828l-7.414 7.414a2 2 0 0 1-2.828 0L3 12.414V5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-              <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
-            </svg>
-            Tiket Saya
-          </button>
           <button class="menu-item" :class="{ active: activeTab === 'profil' }" @click="activeTab = 'profil'">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/>
@@ -763,12 +759,6 @@ const formatCurrency = (amount) => {
               <path d="M12 1L15.09 8.26H23L17.55 12.25L19.64 19.52L12 15.5L4.36 19.52L6.45 12.25L1 8.26H8.91L12 1Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             </svg>
             Loyalty
-          </button>
-          <button class="menu-item logout" @click="showLogoutConfirm = true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Keluar
           </button>
         </div>
       </div>

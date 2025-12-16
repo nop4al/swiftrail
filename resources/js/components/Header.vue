@@ -21,10 +21,45 @@
       <nav class="nav">
         <router-link to="/" class="nav-link">Beranda</router-link>
         
-        <!-- Jika sudah login: tampilkan Tiket Saya & Profile -->
+        <!-- Jika sudah login: tampilkan profile user dengan dropdown -->
         <template v-if="isLoggedIn">
-          <router-link to="/ticket" class="nav-link">Tiket Saya</router-link>
-          <router-link to="/profile" class="nav-link">Profile</router-link>
+          <div class="user-profile-menu">
+            <button @click="toggleUserMenu" class="user-profile-btn">
+              <div class="user-avatar">
+                {{ userInitial }}
+              </div>
+              <div class="user-info">
+                <div class="user-name">{{ userName }}</div>
+              </div>
+              <svg class="menu-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7 10L12 15L17 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            
+            <!-- Dropdown Menu -->
+            <div v-if="showUserMenu" class="dropdown-menu">
+              <router-link to="/ticket" class="dropdown-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M7 3H17C18.1046 3 19 3.89543 19 5V19C19 20.1046 18.1046 21 17 21H7C5.89543 21 5 20.1046 5 19V5C5 3.89543 5.89543 3 7 3Z" stroke="currentColor" stroke-width="2"/>
+                  <path d="M9 7H15M9 11H15M9 15H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                Tiket Saya
+              </router-link>
+              <router-link to="/profile" class="dropdown-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/>
+                  <path d="M4 20C4 16.134 7.58172 13 12 13C16.4183 13 20 16.134 20 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Profile
+              </router-link>
+              <button @click="handleLogout" class="dropdown-item logout-item">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Logout
+              </button>
+            </div>
+          </div>
         </template>
         
         <!-- Jika belum login: tampilkan Login & Register -->
@@ -39,13 +74,142 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 
 const router = useRouter()
+const authToken = ref(localStorage.getItem('authToken'))
+const showUserMenu = ref(false)
+const userProfile = ref({
+  first_name: '',
+  last_name: '',
+  user_id: ''
+})
 
 // Check apakah sudah login dari localStorage
 const isLoggedIn = computed(() => {
-  return !!localStorage.getItem('authToken')
+  return !!authToken.value
+})
+
+const userName = computed(() => {
+  const profile = userProfile.value
+  if (profile && profile.first_name && profile.last_name) {
+    return `${profile.first_name} ${profile.last_name}`
+  }
+  return 'User'
+})
+
+const userInitial = computed(() => {
+  const profile = userProfile.value
+  if (profile && profile.first_name && profile.last_name) {
+    return (profile.first_name.charAt(0) + profile.last_name.charAt(0)).toUpperCase()
+  }
+  if (profile && profile.first_name) {
+    return profile.first_name.charAt(0).toUpperCase()
+  }
+  return 'U'
+})
+
+const userId = computed(() => {
+  return userProfile.value?.user_id || 'ID tidak tersedia'
+})
+
+// Load user profile dari localStorage
+const loadUserProfile = () => {
+  const profile = localStorage.getItem('userProfile')
+  if (profile) {
+    try {
+      const parsed = JSON.parse(profile)
+      if (parsed) {
+        userProfile.value = {
+          first_name: parsed.first_name || '',
+          last_name: parsed.last_name || '',
+          user_id: parsed.user_id || ''
+        }
+        console.log('Loaded profile:', userProfile.value)
+      }
+    } catch (e) {
+      console.error('Error parsing userProfile:', e)
+    }
+  }
+}
+
+// Toggle user menu
+const toggleUserMenu = () => {
+  showUserMenu.value = !showUserMenu.value
+}
+
+// Handle logout
+const handleLogout = async () => {
+  try {
+    const token = localStorage.getItem('authToken')
+    
+    // Call logout endpoint
+    await fetch('/api/v1/auth/logout', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }).catch(() => {}) // Ignore error, logout anyway
+    
+  } catch (error) {
+    console.error('Logout error:', error)
+  } finally {
+    // Clear localStorage
+    localStorage.removeItem('authToken')
+    localStorage.removeItem('userProfile')
+    localStorage.removeItem('userData')
+    
+    // Trigger event untuk update components
+    window.dispatchEvent(new Event('auth-changed'))
+    
+    // Reset state
+    authToken.value = null
+    showUserMenu.value = false
+    
+    // Redirect to login
+    router.push('/login')
+  }
+}
+
+// Close menu when clicking outside
+const handleClickOutside = (e) => {
+  const menu = document.querySelector('.user-profile-menu')
+  if (menu && !menu.contains(e.target)) {
+    showUserMenu.value = false
+  }
+}
+
+// Listen untuk perubahan storage (dari tab lain atau login/logout)
+onMounted(() => {
+  loadUserProfile()
+  
+  // Debug: watch untuk perubahan profile
+  watch(() => userProfile.value, (newVal) => {
+    console.log('userProfile changed:', newVal)
+  }, { deep: true })
+  
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'authToken') {
+      authToken.value = e.newValue
+    }
+    if (e.key === 'userProfile') {
+      loadUserProfile()
+    }
+  })
+  
+  // Listen juga untuk perubahan dari halaman yang sama (custom event)
+  window.addEventListener('auth-changed', (e) => {
+    authToken.value = localStorage.getItem('authToken')
+    loadUserProfile()
+  })
+  
+  // Close menu on outside click
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
 })
 </script>
 
@@ -154,6 +318,132 @@ const isLoggedIn = computed(() => {
   box-shadow: 0 2px 8px rgba(22, 117, 231, 0.3);
 }
 
+/* User Profile Menu Styles */
+.user-profile-menu {
+  position: relative;
+}
+
+.user-profile-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.4rem 0.8rem;
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.user-profile-btn:hover {
+  background: #f0f4ff;
+  border-color: #1675E7;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #1675E7;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.user-name {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #1a1a1a;
+  white-space: nowrap;
+}
+
+.menu-icon {
+  color: #4B5563;
+  transition: transform 0.3s ease;
+}
+
+.user-profile-btn:hover .menu-icon {
+  color: #1675E7;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 0.5rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  min-width: 180px;
+  z-index: 1001;
+  overflow: hidden;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  color: #4B5563;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  text-align: left;
+}
+
+.dropdown-item:hover {
+  background: #f0f4ff;
+  color: #1675E7;
+}
+
+.dropdown-item svg {
+  color: currentColor;
+  flex-shrink: 0;
+}
+
+.logout-item {
+  color: #f97316;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+}
+
+.logout-item:hover {
+  background: #fef2f2;
+  color: #ea580c;
+}
+
 @media (max-width: 768px) {
   .header-container {
     padding: 0 1rem;
@@ -178,6 +468,32 @@ const isLoggedIn = computed(() => {
 
   .logo-subtitle {
     font-size: 0.6rem;
+  }
+
+  .user-id {
+    max-width: 120px;
+  }
+
+  .dropdown-menu {
+    min-width: 160px;
+  }
+
+  .user-profile-btn {
+    gap: 0.5rem;
+  }
+
+  .user-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.8rem;
+  }
+
+  .user-name {
+    font-size: 0.8rem;
+  }
+
+  .user-id {
+    font-size: 0.65rem;
   }
 }
 </style>

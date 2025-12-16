@@ -42,6 +42,8 @@ const handleLogin = async () => {
     }
     if (data.data?.user) {
       localStorage.setItem('userProfile', JSON.stringify(data.data.user))
+      // Trigger event untuk update header dan component lain (SETELAH save data)
+      window.dispatchEvent(new Event('auth-changed'))
       
       // Redirect berdasarkan role
       if (data.data.user.role === 'admin') {
@@ -50,6 +52,7 @@ const handleLogin = async () => {
         router.push('/home')
       }
     } else {
+      window.dispatchEvent(new Event('auth-changed'))
       router.push('/home')
     }
   } catch (error) {

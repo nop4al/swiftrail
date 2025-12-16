@@ -61,7 +61,7 @@ return new class extends Migration
             $table->boolean('active')->default(true);
             $table->timestamps();
         });
-
+        
         // Routes
         Schema::create('routes', function (Blueprint $table) {
             $table->id();

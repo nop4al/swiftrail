@@ -20,6 +20,7 @@ class AuthController extends ApiBaseController
                 'first_name' => 'required|string|max:255',
                 'last_name' => 'required|string|max:255',
                 'email' => 'required|string|email|unique:users',
+                'phone_number' => 'required|string|regex:/^\d{10,12}$/',
                 'gender' => 'required|in:Laki-laki,Perempuan',
                 'password' => 'required|string|min:8|confirmed',
             ]);
@@ -28,6 +29,7 @@ class AuthController extends ApiBaseController
                 'first_name' => $validated['first_name'],
                 'last_name' => $validated['last_name'],
                 'email' => $validated['email'],
+                'phone' => $validated['phone_number'],
                 'gender' => $validated['gender'],
                 'password' => Hash::make($validated['password']),
                 'role' => 'user',
@@ -45,6 +47,7 @@ class AuthController extends ApiBaseController
                         'first_name' => $user->first_name,
                         'last_name' => $user->last_name,
                         'email' => $user->email,
+                        'phone' => $user->phone,
                         'gender' => $user->gender,
                         'role' => $user->role,
                     ],
@@ -93,6 +96,7 @@ class AuthController extends ApiBaseController
                         'first_name' => $user->first_name,
                         'last_name' => $user->last_name,
                         'email' => $user->email,
+                        'phone' => $user->phone,
                         'gender' => $user->gender,
                         'role' => $user->role,
                     ],
@@ -126,6 +130,10 @@ class AuthController extends ApiBaseController
                 'first_name' => $user->first_name,
                 'last_name' => $user->last_name,
                 'email' => $user->email,
+                'phone' => $user->phone,
+                'identityNumber' => $user->identityNumber,
+                'address' => $user->address,
+                'city' => $user->city,
                 'gender' => $user->gender,
                 'role' => $user->role,
                 'is_admin' => $user->isAdmin(),
@@ -163,6 +171,10 @@ class AuthController extends ApiBaseController
                 'first_name' => 'sometimes|string|max:255',
                 'last_name' => 'sometimes|string|max:255',
                 'email' => 'sometimes|string|email|unique:users,email,' . $user->id,
+                'phone' => 'sometimes|string|regex:/^\d{10,12}$/',
+                'identityNumber' => 'sometimes|string|max:255',
+                'address' => 'sometimes|string|max:255',
+                'city' => 'sometimes|string|max:255',
             ]);
 
             $user->update($validated);
@@ -176,6 +188,10 @@ class AuthController extends ApiBaseController
                     'first_name' => $user->first_name,
                     'last_name' => $user->last_name,
                     'email' => $user->email,
+                    'phone' => $user->phone,
+                    'identityNumber' => $user->identityNumber,
+                    'address' => $user->address,
+                    'city' => $user->city,
                     'role' => $user->role,
                 ]
             ], 200);

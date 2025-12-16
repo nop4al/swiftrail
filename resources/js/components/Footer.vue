@@ -47,19 +47,34 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
+const authToken = ref(localStorage.getItem('authToken'))
 
 // Check apakah sudah login (dari localStorage)
 const isLoggedIn = computed(() => {
-  return !!localStorage.getItem('authToken')
+  return !!authToken.value
 })
 
 // Check apakah di halaman Beranda (home)
 const isHomePage = computed(() => {
   return route.path === '/' || route.path === '/home'
+})
+
+// Listen untuk perubahan storage
+onMounted(() => {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'authToken') {
+      authToken.value = e.newValue
+    }
+  })
+  
+  // Listen juga untuk perubahan dari halaman yang sama (custom event)
+  window.addEventListener('auth-changed', (e) => {
+    authToken.value = localStorage.getItem('authToken')
+  })
 })
 </script>
 

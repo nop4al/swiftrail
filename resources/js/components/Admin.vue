@@ -403,6 +403,8 @@ const handleLogout = () => {
   adminPassword.value = ''
   localStorage.removeItem('authToken')
   localStorage.removeItem('userProfile')
+  // Trigger event untuk update header dan component lain
+  window.dispatchEvent(new Event('auth-changed'))
   router.push('/login')
 }
 

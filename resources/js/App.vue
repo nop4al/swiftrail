@@ -1,12 +1,18 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, ref, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import Header from './components/Header.vue'
 import Footer from './components/Footer.vue'
 import AuthWarningModal from './components/modals/AuthWarningModal.vue'
 
 const router = useRouter()
+const route = useRoute()
 const authWarningRef = ref(null)
+
+// Check apakah route saat ini adalah login atau register
+const hideHeaderFooter = computed(() => {
+  return route.path === '/login' || route.path === '/register'
+})
 
 onMounted(() => {
   fetch('/api/v1/health')
@@ -29,12 +35,12 @@ window.showAuthWarning = () => {
 
 <template>
   <div class="app">
-    <Header />
+    <Header v-if="!hideHeaderFooter" />
     <main class="app-main">
       <AuthWarningModal ref="authWarningRef" />
       <router-view />
     </main>
-    <Footer />
+    <Footer v-if="!hideHeaderFooter" />
   </div>
 </template>
 
