@@ -30,68 +30,47 @@ class BookingController extends Controller
             $toStation = trim($request->to_station);
             $date = $request->date;
 
-            // Get all trains with their stops
-            $allTrains = Train::with('stops.station')->get();
+            // Get schedules with their trains and routes
+            $schedules = Schedule::with(['train', 'route.departureStation', 'route.arrivalStation'])
+                ->whereHas('route', function ($q) use ($fromStation, $toStation) {
+                    $q->whereHas('departureStation', function ($sq) use ($fromStation) {
+                        $sq->where('name', 'like', "%{$fromStation}%")
+                            ->orWhere('code', 'like', "%{$fromStation}%");
+                    })
+                    ->whereHas('arrivalStation', function ($sq) use ($toStation) {
+                        $sq->where('name', 'like', "%{$toStation}%")
+                            ->orWhere('code', 'like', "%{$toStation}%");
+                    });
+                })
+                ->where('status', 'active')
+                ->get();
 
             $filteredTrains = [];
-
-            foreach ($allTrains as $train) {
-                if (!$train->stops || $train->stops->count() === 0) {
-                    continue;
-                }
-
-                // Sort stops by sequence
-                $stops = $train->stops->sortBy('sequence');
-                $stationNames = $stops->pluck('station.name')->map(fn($name) => trim($name))->toArray();
-
-                // Find station indices with flexible matching
-                $fromIdx = null;
-                $toIdx = null;
+            
+            foreach ($schedules as $schedule) {
+                $availableSeats = intval($schedule->train->capacity * 0.75);
                 
-                foreach ($stationNames as $idx => $stationName) {
-                    // Match if one contains the other, or if key words match
-                    $fromMatch = $this->stationNameMatch($stationName, $fromStation);
-                    $toMatch = $this->stationNameMatch($stationName, $toStation);
-                    
-                    if ($fromMatch) {
-                        $fromIdx = $idx;
-                    }
-                    if ($toMatch) {
-                        $toIdx = $idx;
-                    }
-                }
-
-                // Check if route matches
-                if ($fromIdx !== null && $toIdx !== null && $fromIdx < $toIdx) {
-                    $fromStop = $stops->values()->get($fromIdx);
-                    $toStop = $stops->values()->get($toIdx);
-
-                    if ($fromStop && $toStop) {
-                        // Calculate total available seats (simplified - assume 75% capacity is available)
-                        $availableSeats = intval($train->capacity * 0.75);
-                        
-                        $filteredTrains[] = [
-                            'train_id' => $train->id,
-                            'train_name' => $train->name,
-                            'train_code' => $train->code,
-                            'departure' => $fromStop->departure_time,
-                            'arrival' => $toStop->arrival_time,
-                            'duration' => $this->calculateDuration($fromStop->departure_time, $toStop->arrival_time),
-                            'from_station' => $fromStation,
-                            'to_station' => $toStation,
-                            'train_type' => $train->type,
-                            'capacity' => $train->capacity,
-                            'seats_available' => $availableSeats,
-                            'min_price' => 250000,
-                            'max_price' => 450000,
-                            'classes' => [
-                                ['type' => 'economy', 'name' => 'Economy', 'price' => 250000, 'available' => intval($availableSeats * 0.5)],
-                                ['type' => 'business', 'name' => 'Business', 'price' => 350000, 'available' => intval($availableSeats * 0.3)],
-                                ['type' => 'executive', 'name' => 'Executive', 'price' => 450000, 'available' => intval($availableSeats * 0.2)],
-                            ]
-                        ];
-                    }
-                }
+                $filteredTrains[] = [
+                    'schedule_id' => $schedule->id,
+                    'train_id' => $schedule->train_id,
+                    'train_name' => $schedule->train->name,
+                    'train_code' => $schedule->train->code,
+                    'departure' => $schedule->departure_time,
+                    'arrival' => $schedule->arrival_time,
+                    'duration' => $this->calculateDuration($schedule->departure_time, $schedule->arrival_time),
+                    'from_station' => $schedule->route->departureStation->name,
+                    'to_station' => $schedule->route->arrivalStation->name,
+                    'train_type' => $schedule->train->type,
+                    'capacity' => $schedule->train->capacity,
+                    'seats_available' => $availableSeats,
+                    'min_price' => 250000,
+                    'max_price' => 450000,
+                    'classes' => [
+                        ['type' => 'economy', 'name' => 'Economy', 'price' => 250000, 'available' => intval($availableSeats * 0.5)],
+                        ['type' => 'business', 'name' => 'Business', 'price' => 350000, 'available' => intval($availableSeats * 0.3)],
+                        ['type' => 'executive', 'name' => 'Executive', 'price' => 450000, 'available' => intval($availableSeats * 0.2)],
+                    ]
+                ];
             }
 
             return response()->json([
@@ -188,6 +167,9 @@ class BookingController extends Controller
 
             // Generate booking code
             $bookingCode = 'BK' . date('YmdHis') . random_int(1000, 9999);
+            
+            // Generate QR code data - combination of booking code, seat, and timestamp
+            $qrCodeData = 'BK-' . strtoupper(substr($bookingCode, -8)) . '-' . strtoupper(str_replace(' ', '', $validated['seat_number'])) . '-' . date('dmY');
 
             $booking = Booking::create([
                 'booking_code' => $bookingCode,
@@ -199,6 +181,7 @@ class BookingController extends Controller
                 'seat_number' => $validated['seat_number'],
                 'class' => $validated['class'],
                 'price' => $validated['price'],
+                'qr_code' => $qrCodeData,
                 'status' => 'pending',
             ]);
 
@@ -211,6 +194,7 @@ class BookingController extends Controller
                     'passengerName' => $booking->passenger_name,
                     'seatNumber' => $booking->seat_number,
                     'price' => $booking->price,
+                    'qrCode' => $booking->qr_code,
                     'createdAt' => $booking->created_at,
                 ],
                 'message' => 'Booking created successfully'
@@ -233,7 +217,7 @@ class BookingController extends Controller
     public function getBooking($bookingId): JsonResponse
     {
         try {
-            $booking = Booking::with(['user', 'schedule.train', 'schedule.route'])->find($bookingId);
+            $booking = Booking::with(['user', 'schedule.train', 'schedule.route.departureStation', 'schedule.route.arrivalStation'])->find($bookingId);
 
             if (!$booking) {
                 return response()->json([
@@ -242,24 +226,51 @@ class BookingController extends Controller
                 ], 404);
             }
 
+            $schedule = $booking->schedule;
+            $train = $schedule->train;
+            $route = $schedule->route;
+            $fromStation = $route->departureStation;
+            $toStation = $route->arrivalStation;
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'id' => $booking->id,
-                    'bookingCode' => $booking->booking_code,
-                    'ticketNumber' => $booking->ticket_number,
-                    'passengerName' => $booking->passenger_name,
-                    'passengerType' => $booking->passenger_type,
-                    'seatNumber' => $booking->seat_number,
+                    'booking_code' => $booking->booking_code,
+                    'ticket_number' => $booking->ticket_number,
+                    'passenger_name' => $booking->passenger_name,
+                    'nik' => $booking->nik,
+                    'passenger_type' => $booking->passenger_type,
+                    'seat_number' => $booking->seat_number,
                     'class' => $booking->class,
                     'price' => $booking->price,
                     'status' => $booking->status,
-                    'trainName' => $booking->schedule->train->name,
-                    'departureTime' => $booking->schedule->departure_time,
-                    'arrivalTime' => $booking->schedule->arrival_time,
-                    'fromStation' => $booking->schedule->route->departureStation->name,
-                    'toStation' => $booking->schedule->route->arrivalStation->name,
-                    'createdAt' => $booking->created_at,
+                    'qr_code' => $booking->qr_code,
+                    'created_at' => $booking->created_at,
+                    'train' => [
+                        'id' => $train->id,
+                        'name' => $train->name,
+                        'number' => $train->train_number ?? 'N/A',
+                        'type' => $train->type ?? 'N/A'
+                    ],
+                    'schedule' => [
+                        'id' => $schedule->id,
+                        'departure_time' => $schedule->departure_time,
+                        'arrival_time' => $schedule->arrival_time,
+                        'travel_date' => $schedule->travel_date,
+                        'available_seats' => $schedule->available_seats ?? 0,
+                        'price' => $schedule->price
+                    ],
+                    'from_station' => [
+                        'id' => $fromStation->id ?? null,
+                        'name' => $fromStation->name ?? 'N/A',
+                        'code' => $fromStation->code ?? 'N/A'
+                    ],
+                    'to_station' => [
+                        'id' => $toStation->id ?? null,
+                        'name' => $toStation->name ?? 'N/A',
+                        'code' => $toStation->code ?? 'N/A'
+                    ]
                 ]
             ]);
         } catch (\Exception $e) {

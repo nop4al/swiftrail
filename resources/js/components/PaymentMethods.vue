@@ -166,6 +166,7 @@ const doPay = () => {
     query: {
       total: route.query.total,
       orderNumber,
+      scheduleId: route.query.scheduleId || route.query.bookingId || '',
       paymentMethod: selected.value,
       selectedBank: selected.value === 'ib' ? selectedBank.value : '',
       trainName: route.query.trainName,

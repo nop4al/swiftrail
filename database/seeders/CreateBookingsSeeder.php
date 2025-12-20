@@ -37,7 +37,7 @@ class CreateBookingsSeeder extends Seeder
             'class' => 'Eksekutif',
             'price' => 450000,
             'qr_code' => 'SWR-202501-AB5001|TKT-20250001|01A|14:30|20-01-2025',
-            'status' => 'Aktif'
+            'status' => 'confirmed'
         ]);
 
         Booking::create([
@@ -52,7 +52,7 @@ class CreateBookingsSeeder extends Seeder
             'class' => 'Bisnis',
             'price' => 280000,
             'qr_code' => 'SWR-202501-EX3002|TKT-20250002|12B|06:00|10-12-2024',
-            'status' => 'Selesai'
+            'status' => 'used'
         ]);
     }
 }

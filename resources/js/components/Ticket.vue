@@ -63,7 +63,7 @@
         </div>
         <h3>Tidak Ada Tiket</h3>
         <p>{{ getEmptyMessage() }}</p>
-        <router-link to="/booking" class="btn-primary">Pesan Tiket Sekarang</router-link>
+        <router-link to="/" class="btn-primary">Pesan Tiket Sekarang</router-link>
       </div>
 
       <!-- Ticket List View -->
@@ -82,7 +82,7 @@
                   <span class="time">{{ ticket.departureTime }}</span>
                 </div>
               </div>
-              <span class="status-badge" :class="ticket.status.toLowerCase()">{{ ticket.status }}</span>
+              <span class="status-badge" :class="ticket.status.toLowerCase()">{{ formatStatusDisplay(ticket.status) }}</span>
             </div>
 
             <!-- Route Section -->
@@ -143,8 +143,19 @@
         </div>
       </div>
 
-      <!-- E-Ticket Detail View (Overlay when ticket is selected) -->
-      <div v-if="showETicketDetail" class="eticket-container">
+      <!-- E-Ticket Modal (Popup when ticket is selected) -->
+      <div v-if="showETicketDetail" class="eticket-modal-overlay" @click.self="showETicketDetail = false">
+        <div class="eticket-modal-content">
+          <!-- Close Button -->
+          <button class="modal-close-btn" @click="showETicketDetail = false">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+
+          <!-- E-Ticket Container -->
+          <div class="eticket-container">
       <!-- Back Button -->
       <button class="back-btn" @click="showETicketDetail = false">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -297,7 +308,9 @@
           Bagikan
         </button>
       </div>
-    </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- REFUNDS TAB -->
@@ -353,15 +366,33 @@ const fetchTickets = async () => {
   error.value = null;
   
   try {
+    // Get token from localStorage or sessionStorage
+    const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+    
+    if (!token) {
+      error.value = 'Silakan login terlebih dahulu.';
+      tickets.length = 0;
+      loading.value = false;
+      return;
+    }
+
     const response = await fetch('/api/v1/bookings', {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+        'Authorization': `Bearer ${token}`
       }
     });
 
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Sesi Anda telah berakhir. Silakan login kembali.');
+      } else if (response.status === 404) {
+        // Empty bookings list
+        tickets.length = 0;
+        loading.value = false;
+        return;
+      }
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
@@ -369,10 +400,14 @@ const fetchTickets = async () => {
     
     // Clear and fill tickets array
     tickets.length = 0;
-    tickets.push(...data);
+    if (Array.isArray(data)) {
+      tickets.push(...data);
+    } else if (data.data && Array.isArray(data.data)) {
+      tickets.push(...data.data);
+    }
     
   } catch (err) {
-    error.value = 'Gagal memuat tiket. Silakan coba lagi.';
+    error.value = err.message || 'Gagal memuat tiket. Silakan coba lagi.';
     console.error('Fetch error:', err);
     // Tampilkan empty state jika ada error
     tickets.length = 0;
@@ -385,9 +420,14 @@ const filteredTickets = computed(() => {
   let filtered = tickets;
 
   if (activeFilter.value === 'active') {
-    filtered = tickets.filter(t => t.status === 'Aktif');
+    filtered = tickets.filter(t => 
+      t.status === 'confirmed' || 
+      t.status === 'pending'
+    );
   } else if (activeFilter.value === 'completed') {
-    filtered = tickets.filter(t => t.status === 'Selesai');
+    filtered = tickets.filter(t => 
+      t.status === 'used'
+    );
   }
 
   return filtered.sort((a, b) => new Date(b.departureDate) - new Date(a.departureDate));
@@ -457,6 +497,16 @@ function formatPrice(price) {
   }).format(price);
 }
 
+function formatStatusDisplay(status) {
+  const statusMap = {
+    'pending': 'PENDING',
+    'confirmed': 'AKTIF',
+    'used': 'SELESAI',
+    'cancelled': 'DIBATALKAN'
+  };
+  return statusMap[status] || status.toUpperCase();
+}
+
 function getEmptyMessage() {
   if (activeFilter.value === 'active') {
     return 'Anda belum memiliki tiket aktif saat ini.';
@@ -491,6 +541,84 @@ function shareTicket(ticket) {
 </script>
 
 <style scoped>
+/* Modal Overlay Styles */
+.eticket-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.eticket-modal-content {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--color-bg-light);
+  border-radius: 16px;
+  animation: slideUp 0.3s ease-in-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-close-btn {
+  position: sticky;
+  top: 20px;
+  right: 20px;
+  float: right;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: var(--color-white);
+  border: 2px solid #e5e7eb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  z-index: 1001;
+}
+
+.modal-close-btn:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  transform: rotate(90deg);
+}
+
+.modal-close-btn svg {
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-dark);
+}
+
 /* Header */
 /* Main Tab Navigation */
 .main-tabs {
@@ -728,14 +856,34 @@ function shareTicket(ticket) {
   letter-spacing: 0.5px;
 }
 
+.status-badge.pending {
+  background: rgba(249, 115, 22, 0.1);
+  color: #F97316;
+}
+
+.status-badge.confirmed {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+}
+
 .status-badge.aktif {
   background: rgba(16, 185, 129, 0.1);
   color: #10B981;
 }
 
+.status-badge.used {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3B82F6;
+}
+
 .status-badge.selesai {
   background: rgba(59, 130, 246, 0.1);
   color: #3B82F6;
+}
+
+.status-badge.cancelled {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
 }
 
 .status-badge.dibatalkan {
@@ -925,7 +1073,7 @@ function shareTicket(ticket) {
 
 /* Back Button */
 .back-btn {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 8px;
   padding: 10px 16px;

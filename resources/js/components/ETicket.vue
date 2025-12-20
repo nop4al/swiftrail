@@ -1,7 +1,13 @@
 <template>
   <div class="eticket-page">
+    <!-- Loading State -->
+    <div v-if="isLoading" class="loading-container">
+      <div class="spinner"></div>
+      <p>Memuat e-ticket...</p>
+    </div>
+
     <!-- Header -->
-    <header class="header">
+    <header v-if="!isLoading" class="header">
       <div class="header-container">
         <div class="logo">
           <div class="logo-icon">
@@ -26,7 +32,7 @@
       </div>
     </header>
 
-    <div class="eticket-container">
+    <div v-if="!isLoading" class="eticket-container">
       <!-- Back Button -->
       <button class="back-btn" @click="goBack">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -54,13 +60,6 @@
                 <text x="50%" y="50%" font-size="20" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">SR</text>
               </svg>
               <span class="logo-text-small">SwiftRail</span>
-            </div>
-            <div class="logo-right">
-              <svg width="60" height="40" viewBox="0 0 60 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="30" cy="20" r="18" fill="#10B981"/>
-                <text x="50%" y="50%" font-size="16" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">80%</text>
-              </svg>
-              <span class="logo-text-small">Selamat Melayani</span>
             </div>
           </div>
 
@@ -184,15 +183,16 @@
 </template>
 
 <script setup>
-import { reactive, onMounted, ref } from 'vue';
+import { reactive, onMounted, ref, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import QRCode from 'qrcode';
 
 const router = useRouter();
 const route = useRoute();
 const qrCodeElement = ref(null);
+const isLoading = ref(true);
 
-// Sample ticket data - in real app, this would come from route params or API
+// Sample ticket data - will be replaced by API data
 const ticket = reactive({
   trainName: 'Argo Bromo Anggrek',
   trainCode: '2',
@@ -217,9 +217,16 @@ const ticket = reactive({
   createdAt: '2025-12-13T13:13:45'
 });
 
-onMounted(() => {
-  // Generate QR Code
-  if (qrCodeElement.value) {
+// Watch untuk QR Code updates
+watch(() => ticket.qrCode, () => {
+  generateQRCode();
+}, { immediate: false });
+
+const generateQRCode = () => {
+  if (qrCodeElement.value && ticket.qrCode) {
+    // Clear previous QR code
+    qrCodeElement.value.innerHTML = '';
+    
     QRCode.toCanvas(qrCodeElement.value, ticket.qrCode, {
       errorCorrectionLevel: 'H',
       type: 'image/png',
@@ -234,6 +241,109 @@ onMounted(() => {
       if (error) console.error('QR Code Error:', error);
     });
   }
+};
+
+const fetchBookingData = async () => {
+  try {
+    isLoading.value = true;
+    const bookingId = route.params.id;
+    
+    if (!bookingId) {
+      console.warn('No booking ID provided, using sample data');
+      generateQRCode();
+      return;
+    }
+
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      console.warn('No auth token found, using sample data');
+      generateQRCode();
+      return;
+    }
+
+    const response = await fetch(`/api/v1/bookings/${bookingId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.success && data.data) {
+      const booking = data.data;
+      const schedule = booking.schedule || {};
+      const train = booking.train || {};
+      const fromStation = booking.from_station || {};
+      const toStation = booking.to_station || {};
+
+      // Update ticket data with API response
+      Object.assign(ticket, {
+        trainName: train.name || 'N/A',
+        trainCode: train.number || 'N/A',
+        bookingCode: booking.booking_code || 'N/A',
+        from: fromStation.name || 'N/A',
+        to: toStation.name || 'N/A',
+        fromCode: fromStation.code || 'N/A',
+        toCode: toStation.code || 'N/A',
+        departureTime: schedule.departure_time || 'N/A',
+        arrivalTime: schedule.arrival_time || 'N/A',
+        duration: calculateDuration(schedule.departure_time, schedule.arrival_time),
+        departureDate: schedule.travel_date || booking.created_at,
+        passengerName: booking.passenger_name || 'N/A',
+        nik: booking.nik || 'N/A',
+        passengerType: booking.passenger_type || 'UMUM',
+        seatNumber: booking.seat_number || 'N/A',
+        class: booking.class || 'N/A',
+        coach: booking.seat_number ? booking.seat_number.substring(0, 1) : 'N/A',
+        seat: booking.seat_number ? booking.seat_number.substring(1) : 'N/A',
+        price: booking.price || 0,
+        qrCode: booking.qr_code || 'N/A',
+        createdAt: booking.created_at || new Date().toISOString()
+      });
+    } else {
+      console.warn('Invalid response format, using sample data');
+    }
+  } catch (error) {
+    console.error('Error fetching booking data:', error);
+    // Fallback to sample data
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const calculateDuration = (departure, arrival) => {
+  if (!departure || !arrival) return 'N/A';
+  
+  try {
+    const [depHours, depMinutes] = departure.split(':').map(Number);
+    const [arrHours, arrMinutes] = arrival.split(':').map(Number);
+    
+    let hours = arrHours - depHours;
+    let minutes = arrMinutes - depMinutes;
+    
+    if (minutes < 0) {
+      hours--;
+      minutes += 60;
+    }
+    
+    if (hours < 0) {
+      hours += 24;
+    }
+    
+    return `${hours}h ${minutes}m`;
+  } catch (error) {
+    return 'N/A';
+  }
+};
+
+onMounted(() => {
+  // Fetch booking data from API
+  fetchBookingData();
 });
 
 function formatDate(dateStr) {
@@ -290,6 +400,36 @@ function shareTicket() {
 </script>
 
 <style scoped>
+/* Loading State */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  gap: 20px;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-container p {
+  font-size: 16px;
+  font-weight: 500;
+}
+
 /* Header */
 .header {
   background: var(--color-white);

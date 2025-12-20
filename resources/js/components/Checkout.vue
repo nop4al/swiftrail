@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { processPayment } from '@/utils/api'
-import { getOrderSummary, getPaymentData, clearAllData } from '@/utils/storage'
+import { getOrderSummary, getPaymentData, clearAllData, saveOrderSummary } from '@/utils/storage'
 import { formatPrice, showError, showSuccess } from '@/utils/helpers'
 import QRCode from 'qrcode'
 
@@ -105,43 +105,153 @@ const processPaymentTransaction = async () => {
     
     // Get booking and payment data from storage
     const orderSummary = getOrderSummary()
-    const paymentData = getPaymentData()
     const userProfile = JSON.parse(localStorage.getItem('userProfile') || '{}')
     const authToken = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
     
+    if (!authToken) {
+      throw new Error('Token authentikasi tidak ditemukan. Silakan login kembali.')
+    }
+
+    if (!userProfile.id && !userProfile.user_id) {
+      throw new Error('Data pengguna tidak lengkap. Silakan login kembali.')
+    }
+
+    const userId = userProfile.id || userProfile.user_id
+
     console.log('=== Payment Processing ===')
     console.log('paymentMethod:', paymentMethod)
     console.log('finalTotal:', finalTotal)
+    console.log('userId:', userId)
 
-    // For all payment methods, process payment successfully
-    // In production, this would integrate with real payment gateways
     try {
-      // Prepare payment payload
+      // STEP 1: Create booking in database with user_id
+      let bookingResponse = null
+      
+      // Get a valid schedule ID - try from query, or use first available schedule
+      let scheduleId = route.query.scheduleId || null
+      
+      if (!scheduleId) {
+        // Try to get first schedule from API
+        try {
+          const scheduleRes = await fetch('/api/v1/schedules', {
+            headers: {
+              'Authorization': `Bearer ${authToken}`
+            }
+          })
+          
+          if (scheduleRes.ok) {
+            const schedules = await scheduleRes.json()
+            if (Array.isArray(schedules) && schedules.length > 0) {
+              scheduleId = schedules[0].id
+            } else if (schedules.data && schedules.data.length > 0) {
+              scheduleId = schedules.data[0].id
+            }
+          }
+        } catch (err) {
+          console.warn('Could not fetch schedule:', err)
+        }
+      }
+      
+      // If still no schedule, use default (1)
+      scheduleId = scheduleId || 1
+
+      // Generate random seat number (A-D columns, rows 1-20)
+      const columns = ['A', 'B', 'C', 'D']
+      const randomRow = Math.floor(Math.random() * 20) + 1
+      const randomCol = columns[Math.floor(Math.random() * columns.length)]
+      const seatNumber = `${randomRow}${randomCol}`
+
+      const bookingPayload = {
+        schedule_id: scheduleId,
+        user_id: userId,
+        passenger_name: userProfile.name || passengerName || 'Penumpang',
+        nik: userProfile.nik || null,
+        passenger_type: passengerType || 'Dewasa',
+        seat_number: seatNumber, // Use random seat instead of fixed
+        class: trainClass,
+        price: Math.round(finalTotal)
+      }
+
+      console.log('Creating booking with payload:', JSON.stringify(bookingPayload, null, 2))
+
+      try {
+        const bookingRes = await fetch('/api/v1/bookings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify(bookingPayload)
+        })
+
+        if (!bookingRes.ok) {
+          const errorData = await bookingRes.text()
+          console.error(`Failed to create booking via API (${bookingRes.status}):`, errorData)
+          // Try to retry dengan seat number yang berbeda
+          for (let retry = 0; retry < 3; retry++) {
+            const retryRow = Math.floor(Math.random() * 20) + 1
+            const retryCol = columns[Math.floor(Math.random() * columns.length)]
+            const retrySeat = `${retryRow}${retryCol}`
+            
+            bookingPayload.seat_number = retrySeat
+            console.log(`Retrying with seat ${retrySeat}...`)
+            
+            const retryRes = await fetch('/api/v1/bookings', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+              },
+              body: JSON.stringify(bookingPayload)
+            })
+            
+            if (retryRes.ok) {
+              bookingResponse = await retryRes.json()
+              console.log('Booking created on retry:', bookingResponse)
+              break
+            }
+          }
+          
+          if (!bookingResponse) {
+            throw new Error('Gagal membuat pemesanan. Semua kursi sedang penuh. Silakan coba lagi.')
+          }
+        } else {
+          bookingResponse = await bookingRes.json()
+          console.log('Booking created:', bookingResponse)
+        }
+      } catch (bookingError) {
+        console.error('Error creating booking:', bookingError)
+        hasError.value = true
+        errorMessage.value = bookingError.message || 'Terjadi kesalahan saat membuat pemesanan'
+        isProcessing.value = false
+        showError(bookingError, 'Booking')
+        return
+      }
+
+      // STEP 2: Process payment
       const paymentPayload = {
         order_id: orderNumber,
-        booking_id: orderSummary?.bookingId || route.query.bookingId || 'temp-' + orderNumber,
+        booking_id: bookingResponse?.data?.id || orderSummary?.bookingId || 'temp-' + orderNumber,
         payment_method: paymentMethod,
-        amount: Math.round(finalTotal * 0.901), // Base amount without tax
-        tax: Math.round(finalTotal * 0.099), // 10% tax
+        amount: Math.round(finalTotal * 0.901),
+        tax: Math.round(finalTotal * 0.099),
         gross_amount: Math.round(finalTotal),
         currency: 'IDR',
         bank_name: paymentMethod === 'ib' ? selectedBank : null,
         customer_name: userProfile.name || passengerName || 'Penumpang',
         customer_email: userProfile.email || 'customer@swiftrail.com',
-        user_id: userProfile.id || userProfile.user_id,
+        user_id: userId,
       }
 
       console.log('Payment payload:', JSON.stringify(paymentPayload, null, 2))
 
-      // For SwiftPay specifically, can integrate with Midtrans if desired
-      // For now, all methods just process as successful
-      
       // Simulate successful payment processing
       const paymentResult = {
         status: 'success',
         success: true,
         orderNumber: orderNumber,
-        bookingId: orderSummary?.bookingId || route.query.bookingId,
+        bookingId: bookingResponse?.data?.id || orderSummary?.bookingId || 'temp-' + orderNumber,
+        bookingCode: bookingResponse?.data?.bookingCode || 'BK-' + orderNumber,
         message: `Pembayaran via ${paymentMethodDisplay.value} berhasil!`
       }
 
@@ -151,13 +261,37 @@ const processPaymentTransaction = async () => {
         paymentStatus.value = 'success'
         showSuccess('Pembayaran berhasil diproses!')
         
+        // Save booking data for later reference
+        if (bookingResponse?.data) {
+          saveOrderSummary({
+            bookingId: bookingResponse.data.id,
+            bookingCode: bookingResponse.data.bookingCode,
+            totalPrice: finalTotal
+          })
+
+          // Update booking status to confirmed after payment
+          try {
+            const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token')
+            const bookingCode = bookingResponse.data.bookingCode
+            await fetch(`/api/v1/bookings/${bookingCode}/confirm-payment`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              }
+            })
+          } catch (confirmError) {
+            console.error('Error confirming payment:', confirmError)
+          }
+        }
+        
         // Navigate to success page
         setTimeout(() => {
           router.push({
             path: '/payment-success',
             query: {
-              orderNumber: paymentResult.orderNumber || orderNumber,
-              bookingId: paymentResult.bookingId || orderSummary?.bookingId || 'temp-' + orderNumber,
+              orderNumber: paymentResult.bookingCode || orderNumber,
+              bookingId: paymentResult.bookingId,
               total: finalTotal,
               paymentMethod,
               trainName,

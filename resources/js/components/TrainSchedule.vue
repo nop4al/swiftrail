@@ -163,6 +163,7 @@ const goToSelectSeat = (train) => {
   router.push({
     path: '/select-seat',
     query: {
+      scheduleId: train.scheduleId || train.id,
       trainId: train.id,
       trainName: train.name,
       trainNumber: train.number,
@@ -225,7 +226,8 @@ const fetchSchedules = async () => {
       
       // Map API response format to component format
       const mappedTrains = (searchData.trains || []).map(train => ({
-        id: train.train_id,
+        id: train.schedule_id,
+        scheduleId: train.schedule_id,
         name: train.train_name,
         number: train.train_code,
         departure: train.departure,

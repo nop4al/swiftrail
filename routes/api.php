@@ -45,6 +45,8 @@ Route::prefix('v1')->middleware('api')->group(function () {
         Route::prefix('bookings')->group(function () {
             Route::get('/', [BookingController::class, 'index']);
             Route::get('/{id}', [BookingController::class, 'show']);
+            Route::put('/{id}', [BookingController::class, 'update']);
+            Route::post('/{bookingCode}/confirm-payment', [BookingController::class, 'confirmPayment']);
         });
         // Auth endpoints
         Route::prefix('auth')->group(function () {

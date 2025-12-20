@@ -111,6 +111,8 @@ const handlePay = () => {
     query: {
       total: totalPayment.value,
       orderNumber: `SR${Date.now()}`,
+      bookingId: route.query.bookingId || '',
+      scheduleId: route.query.bookingId || '',
       // Pass all booking details
       trainName: order.value.trainName,
       trainNumber: route.query.trainNumber || '',

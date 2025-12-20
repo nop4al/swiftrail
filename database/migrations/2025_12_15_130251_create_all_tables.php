@@ -105,17 +105,18 @@ return new class extends Migration
         Schema::create('bookings', function (Blueprint $table) {
             $table->id();
             $table->string('booking_code')->unique();
-            $table->string('ticket_number')->unique();
+            $table->string('ticket_number')->unique()->nullable();
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->foreignId('schedule_id')->constrained('schedules')->onDelete('cascade');
             $table->string('passenger_name');
-            $table->string('nik');
+            $table->string('nik')->nullable();
             $table->string('passenger_type');
             $table->string('seat_number');
             $table->string('class');
             $table->decimal('price', 10, 2);
-            $table->string('qr_code');
-            $table->enum('status', ['Aktif', 'Selesai'])->default('Aktif');
+            $table->string('qr_code')->nullable();
+            $table->enum('status', ['pending', 'confirmed', 'cancelled', 'used'])->default('pending');
+            $table->unique(['schedule_id', 'seat_number']); // Unique per schedule
             $table->timestamps();
         });
 

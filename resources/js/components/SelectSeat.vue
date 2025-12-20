@@ -16,6 +16,7 @@ const errorMessage = ref('')
 // User data
 const userData = ref(null)
 
+const scheduleId = ref(route.query.scheduleId)
 const trainId = ref(route.query.trainId)
 const trainName = ref(route.query.trainName)
 const trainNumber = ref(route.query.trainNumber)
