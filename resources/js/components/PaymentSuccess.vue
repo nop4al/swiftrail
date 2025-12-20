@@ -17,6 +17,7 @@ const toStation = route.query.toStation || ''
 const date = route.query.date || ''
 const departure = route.query.departure || ''
 const arrival = route.query.arrival || ''
+const bookingCode = route.query.bookingCode || route.query.orderNumber || ''
 const seats = computed(() => {
   const seatsString = route.query.seats || ''
   if (!seatsString) return []
@@ -32,24 +33,16 @@ const paymentMethodDisplay = computed(() => {
 })
 
 const viewTicket = () => {
-  // Navigate to Etiket (ticket) page
-  router.push({
-    path: '/etiket',
-    query: {
-      orderNumber,
-      trainName,
-      trainNumber,
-      trainClass,
-      fromStation,
-      toStation,
-      date,
-      departure,
-      arrival,
-      seats: route.query.seats,
-      passengerName,
-      total
-    }
-  })
+  // Navigate to Ticket page with booking code to auto-open modal
+  if (bookingCode) {
+    router.push({
+      path: '/ticket',
+      query: { showTicket: bookingCode }
+    })
+  } else {
+    // Fallback to ticket page
+    router.push('/ticket')
+  }
 }
 
 const backToHome = () => {

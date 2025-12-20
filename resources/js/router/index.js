@@ -11,6 +11,7 @@ import PaymentMethods from '../components/PaymentMethods.vue'
 import Checkout from '../components/Checkout.vue'
 import PaymentSuccess from '../components/PaymentSuccess.vue'
 import Etiket from '../components/Etiket.vue'
+import ETicket from '../components/ETicket.vue'
 import Refund from '../components/Refund.vue';
 import Ticket from '../components/Ticket.vue'
 import Tracking from '../components/Tracking.vue'
@@ -88,6 +89,12 @@ const routes = [
     path: '/etiket',
     name: 'Etiket',
     component: Etiket
+  },
+  {
+    path: '/eticket/:id',
+    name: 'ETicket',
+    component: ETicket,
+    meta: { requiresAuth: false }
   },
   {
     path: '/refund-center',

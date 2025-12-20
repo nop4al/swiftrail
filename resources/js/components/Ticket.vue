@@ -445,27 +445,92 @@ watch(activeFilter, () => {
 });
 
 watch(showETicketDetail, (newVal) => {
-  if (newVal && selectedTicket.value && qrCodeElement.value) {
+  console.log('showETicketDetail changed to:', newVal);
+  console.log('selectedTicket:', selectedTicket.value);
+  console.log('qrCodeElement before setTimeout:', qrCodeElement.value);
+  
+  if (newVal && selectedTicket.value) {
     setTimeout(() => {
-      QRCode.toCanvas(qrCodeElement.value, selectedTicket.value.qrCode, {
-        errorCorrectionLevel: 'H',
-        type: 'image/png',
-        quality: 0.95,
-        margin: 1,
-        width: 200,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
+      console.log('qrCodeElement after setTimeout:', qrCodeElement.value);
+      
+      if (!qrCodeElement.value) {
+        console.error('QR Code element is still null!');
+        // Try to find it manually
+        const element = document.querySelector('.qr-code');
+        console.log('Found element manually:', element);
+        if (element) {
+          qrCodeElement.value = element;
         }
-      }, (error) => {
-        if (error) console.error('QR Code Error:', error);
-      });
-    }, 100);
+      }
+      
+      try {
+        // Use qrCode if available, fallback to bookingCode
+        const qrData = selectedTicket.value.qrCode || selectedTicket.value.bookingCode;
+        
+        if (!qrData) {
+          console.error('No QR data available');
+          return;
+        }
+        
+        const eticketUrl = `${window.location.origin}/eticket/${qrData}`;
+        
+        console.log('Generating QR code for:', eticketUrl);
+        console.log('QR data:', qrData);
+        console.log('Element to render to:', qrCodeElement.value);
+        
+        if (!qrCodeElement.value) {
+          console.error('QR Code element not found!');
+          return;
+        }
+        
+        // Clear previous content
+        qrCodeElement.value.innerHTML = '';
+        
+        // Create a canvas element
+        const canvas = document.createElement('canvas');
+        qrCodeElement.value.appendChild(canvas);
+        
+        QRCode.toCanvas(canvas, eticketUrl, {
+          errorCorrectionLevel: 'H',
+          type: 'image/png',
+          quality: 0.95,
+          margin: 1,
+          width: 200,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        }, (error) => {
+          if (error) {
+            console.error('QR Code Error:', error);
+          } else {
+            console.log('QR Code generated successfully');
+          }
+        });
+      } catch (error) {
+        console.error('Error in QR generation:', error);
+      }
+    }, 200);
   }
 });
 
-onMounted(() => {
-  fetchTickets();
+onMounted(async () => {
+  // Fetch tickets first
+  await fetchTickets();
+  
+  // Check if we need to auto-open a ticket modal
+  const showTicketCode = route.query.showTicket;
+  if (showTicketCode) {
+    console.log('Auto-opening ticket:', showTicketCode);
+    // Find the ticket with this code
+    const ticket = tickets.find(t => t.bookingCode === showTicketCode);
+    if (ticket) {
+      selectedTicket.value = ticket;
+      showETicketDetail.value = true;
+    } else {
+      console.warn('Ticket not found with code:', showTicketCode);
+    }
+  }
 });
 
 function formatDate(dateStr) {

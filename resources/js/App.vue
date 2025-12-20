@@ -9,12 +9,18 @@ const router = useRouter();
 const route = useRoute();
 const authWarningRef = ref(null);
 
-// Check apakah route saat ini adalah login atau register atau admin
+// Check apakah route saat ini adalah login atau register atau admin atau transaksional pages
 const hideHeaderFooter = computed(() => {
     return (
         route.path === "/login" ||
         route.path === "/register" ||
-        route.path === "/admin"
+        route.path === "/admin" ||
+        route.path.startsWith("/trains") ||
+        route.path === "/select-seat" ||
+        route.path === "/order-confirmation" ||
+        route.path === "/payment-methods" ||
+        route.path === "/checkout" ||
+        route.path === "/payment-success"
     );
 });
 

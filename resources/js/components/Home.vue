@@ -165,6 +165,11 @@ const swapStations = () => {
   toStation.value = temp
 }
 
+const handleDateChange = () => {
+  // Date change event - ready for next search
+  console.log('Date changed to:', travelDate.value)
+}
+
 const handleTabClick = (tabId) => {
   if (tabId !== 'antar-kota') {
     notificationMessage.value = 'Fitur ini masih dalam pengembangan'
@@ -372,6 +377,7 @@ const searchTrains = async () => {
                 type="date" 
                 v-model="travelDate"
                 class="form-input date-input"
+                @change="handleDateChange"
               />
             </div>
           </div>

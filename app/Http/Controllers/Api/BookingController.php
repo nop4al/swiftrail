@@ -30,24 +30,52 @@ class BookingController extends Controller
             $toStation = trim($request->to_station);
             $date = $request->date;
 
-            // Get schedules with their trains and routes
+            Log::info('Searching trains:', [
+                'from_station' => $fromStation,
+                'to_station' => $toStation,
+                'date' => $date
+            ]);
+
+            // Get all active schedules with relationships
             $schedules = Schedule::with(['train', 'route.departureStation', 'route.arrivalStation'])
-                ->whereHas('route', function ($q) use ($fromStation, $toStation) {
-                    $q->whereHas('departureStation', function ($sq) use ($fromStation) {
-                        $sq->where('name', 'like', "%{$fromStation}%")
-                            ->orWhere('code', 'like', "%{$fromStation}%");
-                    })
-                    ->whereHas('arrivalStation', function ($sq) use ($toStation) {
-                        $sq->where('name', 'like', "%{$toStation}%")
-                            ->orWhere('code', 'like', "%{$toStation}%");
-                    });
-                })
                 ->where('status', 'active')
                 ->get();
+
+            Log::info('Total active schedules: ' . count($schedules));
 
             $filteredTrains = [];
             
             foreach ($schedules as $schedule) {
+                // Skip if relationships are missing
+                if (!$schedule->train || !$schedule->route || !$schedule->route->departureStation || !$schedule->route->arrivalStation) {
+                    Log::warning('Schedule missing relationships: ' . $schedule->id);
+                    continue;
+                }
+                
+                // Check if stations match
+                $depMatch = strtolower($schedule->route->departureStation->name) === strtolower($fromStation) ||
+                           strtolower($schedule->route->departureStation->code) === strtolower($fromStation);
+                           
+                $arrMatch = strtolower($schedule->route->arrivalStation->name) === strtolower($toStation) ||
+                           strtolower($schedule->route->arrivalStation->code) === strtolower($toStation);
+
+                if (!($depMatch && $arrMatch)) {
+                    continue;
+                }
+
+                // Check if schedule operates on the requested day
+                $dayName = \Carbon\Carbon::parse($date)->format('l'); // Get day name (Monday, Tuesday, etc.)
+                $days = $schedule->days ? explode(',', str_replace(' ', '', $schedule->days)) : [];
+                
+                // If no days specified, it operates every day
+                // If days specified, check if current day is in the list
+                $operatesOnDay = empty($days) || in_array(substr($dayName, 0, 3), $days) || in_array($dayName, $days);
+                
+                if (!$operatesOnDay) {
+                    Log::info('Schedule ' . $schedule->id . ' does not operate on ' . $dayName);
+                    continue;
+                }
+                
                 $availableSeats = intval($schedule->train->capacity * 0.75);
                 
                 $filteredTrains[] = [
@@ -57,6 +85,7 @@ class BookingController extends Controller
                     'train_code' => $schedule->train->code,
                     'departure' => $schedule->departure_time,
                     'arrival' => $schedule->arrival_time,
+                    'travel_date' => $date,
                     'duration' => $this->calculateDuration($schedule->departure_time, $schedule->arrival_time),
                     'from_station' => $schedule->route->departureStation->name,
                     'to_station' => $schedule->route->arrivalStation->name,
@@ -72,6 +101,8 @@ class BookingController extends Controller
                     ]
                 ];
             }
+
+            Log::info('Filtered trains count: ' . count($filteredTrains));
 
             return response()->json([
                 'success' => true,
@@ -167,9 +198,6 @@ class BookingController extends Controller
 
             // Generate booking code
             $bookingCode = 'BK' . date('YmdHis') . random_int(1000, 9999);
-            
-            // Generate QR code data - combination of booking code, seat, and timestamp
-            $qrCodeData = 'BK-' . strtoupper(substr($bookingCode, -8)) . '-' . strtoupper(str_replace(' ', '', $validated['seat_number'])) . '-' . date('dmY');
 
             $booking = Booking::create([
                 'booking_code' => $bookingCode,
@@ -181,7 +209,7 @@ class BookingController extends Controller
                 'seat_number' => $validated['seat_number'],
                 'class' => $validated['class'],
                 'price' => $validated['price'],
-                'qr_code' => $qrCodeData,
+                'qr_code' => $bookingCode,
                 'status' => 'pending',
             ]);
 
@@ -217,7 +245,13 @@ class BookingController extends Controller
     public function getBooking($bookingId): JsonResponse
     {
         try {
-            $booking = Booking::with(['user', 'schedule.train', 'schedule.route.departureStation', 'schedule.route.arrivalStation'])->find($bookingId);
+            // Try to find by ID first, then by booking_code (from QR scan)
+            $booking = Booking::with(['user', 'schedule.train', 'schedule.route.departureStation', 'schedule.route.arrivalStation'])
+                ->where(function ($query) use ($bookingId) {
+                    $query->where('id', $bookingId)
+                        ->orWhere('booking_code', $bookingId);
+                })
+                ->first();
 
             if (!$booking) {
                 return response()->json([
@@ -227,8 +261,23 @@ class BookingController extends Controller
             }
 
             $schedule = $booking->schedule;
+            if (!$schedule) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Schedule not found for this booking'
+                ], 404);
+            }
+
             $train = $schedule->train;
             $route = $schedule->route;
+            
+            if (!$route) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Route not found for this booking'
+                ], 404);
+            }
+
             $fromStation = $route->departureStation;
             $toStation = $route->arrivalStation;
 
@@ -248,10 +297,10 @@ class BookingController extends Controller
                     'qr_code' => $booking->qr_code,
                     'created_at' => $booking->created_at,
                     'train' => [
-                        'id' => $train->id,
-                        'name' => $train->name,
-                        'number' => $train->train_number ?? 'N/A',
-                        'type' => $train->type ?? 'N/A'
+                        'id' => $train ? $train->id : null,
+                        'name' => $train ? $train->name : 'N/A',
+                        'number' => $train ? ($train->train_number ?? 'N/A') : 'N/A',
+                        'type' => $train ? ($train->type ?? 'N/A') : 'N/A'
                     ],
                     'schedule' => [
                         'id' => $schedule->id,
@@ -262,14 +311,14 @@ class BookingController extends Controller
                         'price' => $schedule->price
                     ],
                     'from_station' => [
-                        'id' => $fromStation->id ?? null,
-                        'name' => $fromStation->name ?? 'N/A',
-                        'code' => $fromStation->code ?? 'N/A'
+                        'id' => $fromStation ? $fromStation->id : null,
+                        'name' => $fromStation ? $fromStation->name : 'N/A',
+                        'code' => $fromStation ? $fromStation->code : 'N/A'
                     ],
                     'to_station' => [
-                        'id' => $toStation->id ?? null,
-                        'name' => $toStation->name ?? 'N/A',
-                        'code' => $toStation->code ?? 'N/A'
+                        'id' => $toStation ? $toStation->id : null,
+                        'name' => $toStation ? $toStation->name : 'N/A',
+                        'code' => $toStation ? $toStation->code : 'N/A'
                     ]
                 ]
             ]);

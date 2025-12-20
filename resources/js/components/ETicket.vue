@@ -6,32 +6,6 @@
       <p>Memuat e-ticket...</p>
     </div>
 
-    <!-- Header -->
-    <header v-if="!isLoading" class="header">
-      <div class="header-container">
-        <div class="logo">
-          <div class="logo-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="24" height="24" rx="6" fill="#1675E7"/>
-              <path d="M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V14C18 15.1046 17.1046 16 16 16H8C6.89543 16 6 15.1046 6 14V8Z" fill="white"/>
-              <rect x="8" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-              <rect x="13" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-              <circle cx="9" cy="18" r="1.5" fill="white"/>
-              <circle cx="15" cy="18" r="1.5" fill="white"/>
-            </svg>
-          </div>
-          <div class="logo-text">
-            <span class="logo-title">SwiftRail</span>
-            <span class="logo-subtitle">SUPER APP</span>
-          </div>
-        </div>
-        
-        <nav class="nav">
-          <router-link to="/profile" class="nav-link">Profile</router-link>
-        </nav>
-      </div>
-    </header>
-
     <div v-if="!isLoading" class="eticket-container">
       <!-- Back Button -->
       <button class="back-btn" @click="goBack">
@@ -155,11 +129,6 @@
             <div class="qr-code" ref="qrCodeElement"></div>
             <p class="qr-info">{{ ticket.qrCode }}<br/>Dicetak: {{ formatDateTime(ticket.createdAt) }}</p>
           </div>
-
-          <!-- Footer -->
-          <div class="pass-footer">
-            <p>Perjalanan yang aman dan menyenangkan!</p>
-          </div>
         </div>
       </div>
 
@@ -223,11 +192,25 @@ watch(() => ticket.qrCode, () => {
 }, { immediate: false });
 
 const generateQRCode = () => {
-  if (qrCodeElement.value && ticket.qrCode) {
-    // Clear previous QR code
+  if (!qrCodeElement.value || !ticket.qrCode) {
+    console.warn('QR Code element or data not available');
+    return;
+  }
+  
+  try {
+    console.log('Generating QR code with data:', ticket.qrCode);
+    
+    // Clear previous content
     qrCodeElement.value.innerHTML = '';
     
-    QRCode.toCanvas(qrCodeElement.value, ticket.qrCode, {
+    // Create a canvas element
+    const canvas = document.createElement('canvas');
+    qrCodeElement.value.appendChild(canvas);
+    
+    // Generate URL for e-ticket that can be scanned
+    const eticketUrl = `${window.location.origin}/eticket/${ticket.qrCode}`;
+    
+    QRCode.toCanvas(canvas, eticketUrl, {
       errorCorrectionLevel: 'H',
       type: 'image/png',
       quality: 0.95,
@@ -238,8 +221,14 @@ const generateQRCode = () => {
         light: '#FFFFFF'
       }
     }, (error) => {
-      if (error) console.error('QR Code Error:', error);
+      if (error) {
+        console.error('QR Code Error:', error);
+      } else {
+        console.log('QR Code generated successfully');
+      }
     });
+  } catch (error) {
+    console.error('Error in generateQRCode:', error);
   }
 };
 
@@ -248,8 +237,11 @@ const fetchBookingData = async () => {
     isLoading.value = true;
     const bookingId = route.params.id;
     
+    console.log('Fetching booking data for ID:', bookingId);
+    
     if (!bookingId) {
       console.warn('No booking ID provided, using sample data');
+      await new Promise(r => setTimeout(r, 500));
       generateQRCode();
       return;
     }
@@ -257,6 +249,7 @@ const fetchBookingData = async () => {
     const token = localStorage.getItem('auth_token');
     if (!token) {
       console.warn('No auth token found, using sample data');
+      await new Promise(r => setTimeout(r, 500));
       generateQRCode();
       return;
     }
@@ -273,6 +266,7 @@ const fetchBookingData = async () => {
     }
 
     const data = await response.json();
+    console.log('API Response:', data);
     
     if (data.success && data.data) {
       const booking = data.data;
@@ -305,12 +299,23 @@ const fetchBookingData = async () => {
         qrCode: booking.qr_code || 'N/A',
         createdAt: booking.created_at || new Date().toISOString()
       });
+      
+      console.log('Ticket data updated:', ticket);
+      
+      // Generate QR code after data is updated
+      setTimeout(() => {
+        console.log('Calling generateQRCode from API success');
+        generateQRCode();
+      }, 100);
     } else {
       console.warn('Invalid response format, using sample data');
+      generateQRCode();
     }
   } catch (error) {
     console.error('Error fetching booking data:', error);
-    // Fallback to sample data
+    // Fallback to sample data - generate QR code anyway
+    console.log('Using sample data as fallback');
+    generateQRCode();
   } finally {
     isLoading.value = false;
   }
@@ -342,6 +347,10 @@ const calculateDuration = (departure, arrival) => {
 };
 
 onMounted(() => {
+  console.log('ETicket component mounted');
+  console.log('Route params:', route.params);
+  console.log('QR Code Element available:', qrCodeElement.value !== null);
+  
   // Fetch booking data from API
   fetchBookingData();
 });
