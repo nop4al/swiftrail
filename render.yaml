@@ -1,0 +1,22 @@
+{
+  "buildCommand": "bash build.sh",
+  "startCommand": "vendor/bin/heroku-php-apache2 public/",
+  "envs": [
+    {
+      "key": "APP_NAME",
+      "value": "Swiftrail"
+    },
+    {
+      "key": "APP_ENV",
+      "value": "production"
+    },
+    {
+      "key": "APP_DEBUG",
+      "value": "false"
+    },
+    {
+      "key": "DB_CONNECTION",
+      "value": "pgsql"
+    }
+  ]
+}
