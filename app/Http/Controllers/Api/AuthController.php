@@ -78,9 +78,15 @@ class AuthController extends ApiBaseController
 
             $user = User::where('email', $validated['email'])->first();
 
-            if (!$user || !Hash::check($validated['password'], $user->password)) {
+            if (!$user) {
                 throw ValidationException::withMessages([
-                    'email' => ['The provided credentials are incorrect.'],
+                    'email' => ['Email tidak ditemukan. Silahkan periksa kembali atau daftar terlebih dahulu.'],
+                ]);
+            }
+
+            if (!Hash::check($validated['password'], $user->password)) {
+                throw ValidationException::withMessages([
+                    'password' => ['Password tidak sesuai. Silahkan periksa kembali.'],
                 ]);
             }
 
@@ -88,7 +94,7 @@ class AuthController extends ApiBaseController
 
             return response()->json([
                 'success' => true,
-                'message' => 'Login successful',
+                'message' => 'Login berhasil',
                 'data' => [
                     'user' => [
                         'id' => $user->id,
@@ -107,7 +113,7 @@ class AuthController extends ApiBaseController
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => 'Login gagal',
                 'errors' => $e->errors()
             ], 422);
         }

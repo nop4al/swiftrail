@@ -8,10 +8,15 @@ const password = ref('')
 const rememberMe = ref(false)
 const isLoading = ref(false)
 const showPassword = ref(false)
+const errorMessage = ref('')
+const errorField = ref('')
 
 const handleLogin = async () => {
+  errorMessage.value = ''
+  errorField.value = ''
+
   if (!email.value || !password.value) {
-    alert('Silakan isi semua field')
+    errorMessage.value = 'Silakan isi semua field'
     return
   }
 
@@ -32,7 +37,20 @@ const handleLogin = async () => {
     const data = await response.json()
     
     if (!response.ok) {
-      alert(data.message || 'Login gagal')
+      // Jika ada errors object dengan field-specific errors
+      if (data.errors) {
+        if (data.errors.email) {
+          errorField.value = 'email'
+          errorMessage.value = data.errors.email[0]
+        } else if (data.errors.password) {
+          errorField.value = 'password'
+          errorMessage.value = data.errors.password[0]
+        } else {
+          errorMessage.value = data.message || 'Login gagal'
+        }
+      } else {
+        errorMessage.value = data.message || 'Login gagal'
+      }
       return
     }
 
@@ -53,7 +71,7 @@ const handleLogin = async () => {
     }
   } catch (error) {
     console.error('Login error:', error)
-    alert('Terjadi kesalahan. Silakan coba lagi.')
+    errorMessage.value = 'Terjadi kesalahan. Silakan coba lagi.'
   } finally {
     isLoading.value = false
   }
@@ -132,10 +150,20 @@ const handleBack = () => {
           <h1>Masuk ke Akun Anda</h1>
           <p class="form-subtitle">Masukkan kredensial Anda untuk melanjutkan</p>
 
+          <!-- Error Alert -->
+          <div v-if="errorMessage" class="error-alert">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 8V12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="12" cy="16" r="0.5" fill="currentColor"/>
+            </svg>
+            <span>{{ errorMessage }}</span>
+          </div>
+
           <form @submit.prevent="handleLogin" class="login-form">
             <div class="form-group">
               <label for="email" class="form-label">Email</label>
-              <div class="input-wrapper">
+              <div class="input-wrapper" :class="{ 'input-error': errorField === 'email' }">
                 <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <rect x="2" y="4" width="20" height="16" rx="2" stroke="currentColor" stroke-width="2"/>
                   <path d="M2 6L12 13L22 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -153,7 +181,7 @@ const handleBack = () => {
 
             <div class="form-group">
               <label for="password" class="form-label">Password</label>
-              <div class="input-wrapper">
+              <div class="input-wrapper" :class="{ 'input-error': errorField === 'password' }">
                 <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" stroke-width="2"/>
                   <path d="M7 11V7C7 4.23858 9.23858 2 12 2C14.7614 2 17 4.23858 17 7V11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -367,6 +395,27 @@ const handleBack = () => {
   margin-bottom: 2rem;
 }
 
+.error-alert {
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #c53030;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.error-alert svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: #c53030;
+}
+
 .login-form {
   margin-bottom: 1.5rem;
 }
@@ -387,6 +436,19 @@ const handleBack = () => {
   position: relative;
   display: flex;
   align-items: center;
+}
+
+.input-wrapper.input-error .form-input {
+  border-color: #c53030;
+  background: #fffbfb;
+}
+
+.input-wrapper.input-error .form-input:focus {
+  box-shadow: 0 0 0 3px rgba(197, 48, 48, 0.1);
+}
+
+.input-wrapper.input-error .input-icon {
+  color: #c53030;
 }
 
 .input-icon {
