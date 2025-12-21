@@ -9,10 +9,25 @@ class CreateSchedulesSeeder extends Seeder
 {
     public function run(): void
     {
-        // Define days as empty string so schedules operate every day
-        Schedule::create(['train_id' => 1, 'route_id' => 1, 'departure_time' => '14:30', 'arrival_time' => '19:45', 'days' => '', 'status' => 'active']);
-        Schedule::create(['train_id' => 2, 'route_id' => 2, 'departure_time' => '06:00', 'arrival_time' => '11:30', 'days' => '', 'status' => 'active']);
-        Schedule::create(['train_id' => 2, 'route_id' => 2, 'departure_time' => '14:00', 'arrival_time' => '19:30', 'days' => '', 'status' => 'active']);
-        Schedule::create(['train_id' => 3, 'route_id' => 3, 'departure_time' => '15:30', 'arrival_time' => '18:00', 'days' => '', 'status' => 'active']);
+        // All schedules for route GMB-SBY (Gambir to Surabaya)
+        // Route ID 1 (based on CreateRoutesSeeder)
+        
+        // Train 1: AB-5001 (Argo Bromo Ekspres) - Afternoon
+        Schedule::updateOrCreate(
+            ['train_id' => 1, 'route_id' => 1, 'departure_time' => '14:30'],
+            ['arrival_time' => '22:00', 'days' => '', 'status' => 'active']
+        );
+        
+        // Train 2: EX-3002 (Ekspres Utama Timur) - Morning
+        Schedule::updateOrCreate(
+            ['train_id' => 2, 'route_id' => 1, 'departure_time' => '06:00'],
+            ['arrival_time' => '13:00', 'days' => '', 'status' => 'active']
+        );
+        
+        // Train 3: GA-2003 (Gajayana Regional) - Evening
+        Schedule::updateOrCreate(
+            ['train_id' => 3, 'route_id' => 1, 'departure_time' => '15:30'],
+            ['arrival_time' => '23:00', 'days' => '', 'status' => 'active']
+        );
     }
 }

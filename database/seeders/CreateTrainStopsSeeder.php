@@ -20,10 +20,14 @@ class CreateTrainStopsSeeder extends Seeder
             return;
         }
 
-        // Train 1: AB-5001 (Argo Bromo Ekspres) - Route: Jakarta to Surabaya
-        // Stations: Gambir -> Cirebon -> Pekalongan -> Semarang -> Bojonegoro -> Surabaya
+        // Common route: Jakarta (Gambir) -> Surabaya (Pasar Turi)
+        // Intermediate: Cirebon -> Pekalongan -> Semarang -> Bojonegoro
+        
+        // Train 1: AB-5001 (Argo Bromo Ekspres) - Eksekutif - Pagi Siang
         $train1 = $trains->firstWhere('code', 'AB-5001');
         if ($train1) {
+            TrainStop::where('train_id', $train1->id)->delete();
+            
             $stationSequence = [
                 ['name' => 'Gambir', 'arrival' => null, 'departure' => '14:30'],
                 ['name' => 'Cirebon', 'arrival' => '16:45', 'departure' => '17:00'],
@@ -47,15 +51,18 @@ class CreateTrainStopsSeeder extends Seeder
             }
         }
 
-        // Train 2: EX-3002 (Ekspres Utama Timur) - Route: Jakarta to Surabaya
+        // Train 2: EX-3002 (Ekspres Utama Timur) - Bisnis - Pagi
         $train2 = $trains->firstWhere('code', 'EX-3002');
         if ($train2) {
+            TrainStop::where('train_id', $train2->id)->delete();
+            
             $stationSequence = [
                 ['name' => 'Gambir', 'arrival' => null, 'departure' => '06:00'],
-                ['name' => 'Pekalongan', 'arrival' => '08:00', 'departure' => '08:15'],
-                ['name' => 'Semarang Tawang', 'arrival' => '09:15', 'departure' => '09:30'],
-                ['name' => 'Bojonegoro', 'arrival' => '11:00', 'departure' => '11:15'],
-                ['name' => 'Surabaya Pasar Turi', 'arrival' => '12:30', 'departure' => null],
+                ['name' => 'Cirebon', 'arrival' => '07:30', 'departure' => '07:45'],
+                ['name' => 'Pekalongan', 'arrival' => '08:30', 'departure' => '08:45'],
+                ['name' => 'Semarang Tawang', 'arrival' => '09:45', 'departure' => '10:00'],
+                ['name' => 'Bojonegoro', 'arrival' => '11:30', 'departure' => '11:45'],
+                ['name' => 'Surabaya Pasar Turi', 'arrival' => '13:00', 'departure' => null],
             ];
 
             foreach ($stationSequence as $seq => $stationData) {
@@ -72,9 +79,11 @@ class CreateTrainStopsSeeder extends Seeder
             }
         }
 
-        // Train 3: GA-2003 (Gajayana Regional) - Route: Jakarta to Surabaya
+        // Train 3: GA-2003 (Gajayana Regional) - Ekonomi - Sore
         $train3 = $trains->firstWhere('code', 'GA-2003');
         if ($train3) {
+            TrainStop::where('train_id', $train3->id)->delete();
+            
             $stationSequence = [
                 ['name' => 'Gambir', 'arrival' => null, 'departure' => '15:30'],
                 ['name' => 'Cirebon', 'arrival' => '17:30', 'departure' => '17:45'],
@@ -98,6 +107,6 @@ class CreateTrainStopsSeeder extends Seeder
             }
         }
 
-        echo "Train stops created successfully!\n";
+        echo "Train stops created successfully for all trains!\n";
     }
 }

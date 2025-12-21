@@ -213,13 +213,13 @@ async function fetchTrainData() {
       
       trainData.stops.forEach((stop, idx) => {
         const station = stop.station || stop;
-        const lat = station.latitude || station.lat || parseFloat(station.latitude);
-        const lng = station.longitude || station.lng || parseFloat(station.longitude);
+        let lat = parseFloat(station.latitude || station.lat);
+        let lng = parseFloat(station.longitude || station.lng);
         
         console.log(`Stop ${idx}: lat=${lat}, lng=${lng}, station:`, station);
         
-        if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
-          routeCoordinates.push([parseFloat(lat), parseFloat(lng)]);
+        if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+          routeCoordinates.push([lat, lng]);
         }
       });
       
