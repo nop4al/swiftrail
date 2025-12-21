@@ -25,21 +25,27 @@ class BookingController extends Controller
                 ->get()
                 ->map(function ($booking) {
                     $schedule = $booking->schedule;
-                    $train = $schedule->train;
-                    $route = $schedule->route;
+                    $train = $schedule->train ?? null;
+                    $route = $schedule->route ?? null;
+                    
+                    // Fallback values if relations don't exist
+                    $fromStation = ($route && $route->departureStation) ? $route->departureStation->name : 'Unknown';
+                    $toStation = ($route && $route->arrivalStation) ? $route->arrivalStation->name : 'Unknown';
+                    $trainName = $train ? $train->name : 'Unknown Train';
+                    $trainCode = $train ? $train->code : 'UNKNOWN';
                     
                     return [
                         'id' => $booking->id,
                         'ticketNumber' => $booking->ticket_number,
-                        'trainName' => $train->name,
-                        'trainCode' => $train->code,
+                        'trainName' => $trainName,
+                        'trainCode' => $trainCode,
                         'bookingCode' => $booking->booking_code,
-                        'from' => $route->departureStation->name,
-                        'to' => $route->arrivalStation->name,
+                        'from' => $fromStation,
+                        'to' => $toStation,
                         'departureTime' => $schedule->departure_time,
                         'arrivalTime' => $schedule->arrival_time,
                         'departureDate' => $schedule->departure_date ?? now()->toDateString(),
-                        'duration' => $route->duration ?? '2 jam',
+                        'duration' => ($route && $route->duration) ? $route->duration : '2 jam',
                         'passengerName' => $booking->passenger_name,
                         'nik' => $booking->nik,
                         'passengerType' => $booking->passenger_type,

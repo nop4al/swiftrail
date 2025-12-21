@@ -19,7 +19,8 @@ use App\Http\Controllers\Api\{
     TrackingLiveController,
     TrainTrackingController,
     SwiftPayController,
-    ProfilePhotoController
+    ProfilePhotoController,
+    AdminController
 };
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\MidtransController;
@@ -66,6 +67,17 @@ Route::prefix('v1')->middleware('api')->group(function () {
             Route::post('/claim-reward', [LoyaltyController::class, 'claimReward']);
         });
 
+        // ========== USER REFUND SYSTEM ==========
+        Route::prefix('refunds')->group(function () {
+            Route::post('/', [RefundController::class, 'requestRefund']);
+            Route::get('/', [RefundController::class, 'getUserRefunds']);
+            Route::get('/{id}', [RefundController::class, 'getUserRefund']);
+        });
+
+        // ========== USER TICKETS & WALLETS (For Refund Form) ==========
+        Route::get('/user/tickets', [RefundController::class, 'getUserTickets']);
+        Route::get('/user/swift-pay-wallets', [RefundController::class, 'getUserWallets']);
+
         // ========== SwiftPay Digital Wallet ==========
         Route::prefix('swiftpay')->group(function () {
             // Get wallet info
@@ -82,7 +94,55 @@ Route::prefix('v1')->middleware('api')->group(function () {
 
         // Admin only routes
         Route::middleware('role:admin')->group(function () {
-            // Add admin-only endpoints here later
+            // ========== ADMIN DASHBOARD ==========
+            Route::get('/admin/stats', [AdminController::class, 'getDashboardStats']);
+            
+            // ========== STATIONS MANAGEMENT ==========
+            Route::prefix('admin/stations')->group(function () {
+                Route::get('/', [AdminController::class, 'getStations']);
+                Route::get('/{id}', [AdminController::class, 'getStation']);
+                Route::post('/', [AdminController::class, 'createStation']);
+                Route::put('/{id}', [AdminController::class, 'updateStation']);
+                Route::delete('/{id}', [AdminController::class, 'deleteStation']);
+            });
+
+            // ========== TRAINS MANAGEMENT ==========
+            Route::prefix('admin/trains')->group(function () {
+                Route::get('/', [AdminController::class, 'getTrains']);
+                Route::get('/{id}', [AdminController::class, 'getTrain']);
+                Route::post('/', [AdminController::class, 'createTrain']);
+                Route::put('/{id}', [AdminController::class, 'updateTrain']);
+                Route::delete('/{id}', [AdminController::class, 'deleteTrain']);
+            });
+
+            // ========== ROUTES MANAGEMENT ==========
+            Route::prefix('admin/routes')->group(function () {
+                Route::get('/', [AdminController::class, 'getRoutes']);
+                Route::get('/{id}', [AdminController::class, 'getRoute']);
+                Route::post('/', [AdminController::class, 'createRoute']);
+                Route::put('/{id}', [AdminController::class, 'updateRoute']);
+                Route::delete('/{id}', [AdminController::class, 'deleteRoute']);
+            });
+
+            // ========== SCHEDULES MANAGEMENT ==========
+            Route::prefix('admin/schedules')->group(function () {
+                Route::get('/', [AdminController::class, 'getSchedules']);
+                Route::get('/{id}', [AdminController::class, 'getSchedule']);
+                Route::post('/', [AdminController::class, 'createSchedule']);
+                Route::put('/{id}', [AdminController::class, 'updateSchedule']);
+                Route::delete('/{id}', [AdminController::class, 'deleteSchedule']);
+            });
+
+            // ========== REFUNDS MANAGEMENT ==========
+            Route::prefix('admin/refunds')->group(function () {
+                Route::get('/', [RefundController::class, 'index']);
+                Route::get('/stats', [RefundController::class, 'getStats']);
+                Route::post('/', [RefundController::class, 'store']);
+                Route::get('/{id}', [RefundController::class, 'show']);
+                Route::put('/{id}', [RefundController::class, 'update']);
+                Route::patch('/{id}/status', [RefundController::class, 'updateStatus']);
+                Route::delete('/{id}', [RefundController::class, 'destroy']);
+            });
         });
     });
 

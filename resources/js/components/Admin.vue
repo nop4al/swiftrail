@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { adminApi } from '../utils/adminApi'
 
 const router = useRouter()
 
@@ -42,7 +43,7 @@ const filteredRefunds = computed(() => {
 })
 
 // Master Data State
-const masterDataType = ref('trains')
+const masterDataType = ref('stations')
 const stations = ref([])
 
 const trainTypes = ref([])
@@ -101,17 +102,98 @@ const newRoute = ref({
 const routeMessage = ref({ type: '', text: '' })
 const isLoadingRoute = ref(false)
 
+const editingScheduleId = ref(null)
+const editSchedule = ref({ train_id: '', route_id: '', departure_time: '', arrival_time: '', days: '', status: 'active' })
+const scheduleMessage = ref({ type: '', text: '' })
+const isLoadingSchedule = ref(false)
+
+const handleEditSchedule = (schedule) => {
+  editingScheduleId.value = schedule.id
+  editSchedule.value = { ...schedule }
+}
+
+const handleSaveEditSchedule = async () => {
+  if (!editSchedule.value.train_id || !editSchedule.value.route_id || !editSchedule.value.departure_time || !editSchedule.value.arrival_time) {
+    scheduleMessage.value = { type: 'error', text: 'Silakan isi semua field yang diperlukan' }
+    return
+  }
+
+  isLoadingSchedule.value = true
+  scheduleMessage.value = { type: '', text: '' }
+
+  try {
+    const response = await adminApi.updateSchedule(editingScheduleId.value, {
+      train_id: editSchedule.value.train_id,
+      route_id: editSchedule.value.route_id,
+      departure_time: editSchedule.value.departure_time,
+      arrival_time: editSchedule.value.arrival_time,
+      days: editSchedule.value.days,
+      status: editSchedule.value.status
+    })
+
+    if (response.data) {
+      scheduleMessage.value = { type: 'success', text: 'Jadwal berhasil diperbarui' }
+      editingScheduleId.value = null
+      // Reload schedules
+      loadSchedules()
+      
+      setTimeout(() => {
+        scheduleMessage.value = { type: '', text: '' }
+      }, 3000)
+    } else {
+      scheduleMessage.value = { type: 'error', text: response.message || 'Gagal memperbarui jadwal' }
+    }
+  } catch (error) {
+    console.error('Error updating schedule:', error)
+    scheduleMessage.value = { type: 'error', text: error.message || 'Gagal memperbarui jadwal' }
+  } finally {
+    isLoadingSchedule.value = false
+  }
+}
+
+const handleCancelEditSchedule = () => {
+  editingScheduleId.value = null
+}
+
+const handleDeleteSchedule = async (scheduleId) => {
+  if (!confirm('Yakin ingin menghapus jadwal ini?')) return
+  
+  try {
+    await adminApi.deleteSchedule(scheduleId)
+    scheduleMessage.value = { type: 'success', text: 'Jadwal berhasil dihapus' }
+    loadSchedules()
+    
+    setTimeout(() => {
+      scheduleMessage.value = { type: '', text: '' }
+    }, 3000)
+  } catch (error) {
+    console.error('Error deleting schedule:', error)
+    scheduleMessage.value = { type: 'error', text: 'Gagal menghapus jadwal' }
+  }
+}
+
+const loadSchedules = async () => {
+  try {
+    const response = await adminApi.getSchedules()
+    // Update schedules in trains
+    if (response.data && Array.isArray(response.data)) {
+      trains.value.forEach(train => {
+        train.schedules = response.data.filter(s => s.train_id === train.id || s.trainId === train.id)
+      })
+    }
+  } catch (error) {
+    console.error('Error loading schedules:', error)
+  }
+}
+
+
 const handleAddRoute = async () => {
   if (!newRoute.value.code.trim()) {
     routeMessage.value = { type: 'error', text: 'Kode Rute tidak boleh kosong' }
     return
   }
-  if (!newRoute.value.origin.trim()) {
-    routeMessage.value = { type: 'error', text: 'Stasiun awal tidak boleh kosong' }
-    return
-  }
-  if (!newRoute.value.destination.trim()) {
-    routeMessage.value = { type: 'error', text: 'Stasiun tujuan tidak boleh kosong' }
+  if (!newRoute.value.origin.trim() || !newRoute.value.destination.trim()) {
+    routeMessage.value = { type: 'error', text: 'Stasiun awal dan tujuan tidak boleh kosong' }
     return
   }
   if (!newRoute.value.departureTime) {
@@ -122,8 +204,82 @@ const handleAddRoute = async () => {
     routeMessage.value = { type: 'error', text: 'Durasi perjalanan harus lebih dari 0' }
     return
   }
-  if (routes.value.some(r => r.code === newRoute.value.code)) {
-    routeMessage.value = { type: 'error', text: 'Kode Rute sudah ada' }
+
+  isLoadingRoute.value = true
+  routeMessage.value = { type: '', text: '' }
+
+  try {
+    // Find stations by name
+    const originStation = stations.value.find(s => s.name === newRoute.value.origin)
+    const destStation = stations.value.find(s => s.name === newRoute.value.destination)
+
+    if (!originStation || !destStation) {
+      routeMessage.value = { type: 'error', text: 'Stasiun tidak ditemukan. Pastikan stasiun sudah didaftarkan' }
+      return
+    }
+
+    const response = await adminApi.createRoute({
+      code: newRoute.value.code.trim(),
+      departure_station_id: originStation.id,
+      arrival_station_id: destStation.id,
+      distance: parseInt(newRoute.value.distance) || null,
+      duration: parseInt(newRoute.value.estimatedDuration),
+      base_price: 0,
+      status: newRoute.value.status
+    })
+
+    if (response.data) {
+      routes.value.push(response.data)
+      routeMessage.value = { type: 'success', text: 'Rute berhasil ditambahkan' }
+      showNewRouteForm.value = false
+      newRoute.value = { code: '', origin: '', destination: '', stops: '', departureTime: '', estimatedDuration: '', distance: '', status: 'active' }
+      
+      setTimeout(() => {
+        routeMessage.value = { type: '', text: '' }
+      }, 3000)
+    } else {
+      routeMessage.value = { type: 'error', text: response.message || 'Gagal menambahkan rute' }
+    }
+  } catch (error) {
+    console.error('Error adding route:', error)
+    routeMessage.value = { type: 'error', text: 'Gagal menambahkan rute' }
+  } finally {
+    isLoadingRoute.value = false
+  }
+}
+
+const handleDeleteRoute = async (id) => {
+  if (!confirm('Yakin ingin menghapus rute ini?')) return
+  
+  try {
+    const response = await adminApi.deleteRoute(id)
+    if (response.data || response.success !== false) {
+      const index = routes.value.findIndex(r => r.id === id)
+      if (index !== -1) {
+        routes.value.splice(index, 1)
+      }
+      routeMessage.value = { type: 'success', text: 'Rute berhasil dihapus' }
+      setTimeout(() => {
+        routeMessage.value = { type: '', text: '' }
+      }, 3000)
+    }
+  } catch (error) {
+    console.error('Error deleting route:', error)
+    routeMessage.value = { type: 'error', text: 'Gagal menghapus rute' }
+  }
+}
+
+const editingRouteId = ref(null)
+const editRoute = ref({ code: '', origin: '', destination: '', stops: '', departureTime: '', estimatedDuration: '', distance: '', status: 'active' })
+
+const handleEditRoute = (route) => {
+  editingRouteId.value = route.id
+  editRoute.value = { ...route, stops: Array.isArray(route.stops) ? route.stops.join(', ') : route.stops }
+}
+
+const handleSaveEditRoute = async () => {
+  if (!editRoute.value.code || !editRoute.value.origin || !editRoute.value.destination || !editRoute.value.departureTime || !editRoute.value.estimatedDuration) {
+    routeMessage.value = { type: 'error', text: 'Silakan isi semua field yang diperlukan' }
     return
   }
 
@@ -131,45 +287,43 @@ const handleAddRoute = async () => {
   routeMessage.value = { type: '', text: '' }
 
   try {
-    const id = Math.max(...routes.value.map(r => r.id), 0) + 1
-    routes.value.push({
-      id,
-      code: newRoute.value.code.trim(),
-      origin: newRoute.value.origin.trim(),
-      destination: newRoute.value.destination.trim(),
-      stops: newRoute.value.stops.trim().split(',').filter(s => s.trim()),
-      departureTime: newRoute.value.departureTime,
-      estimatedDuration: parseInt(newRoute.value.estimatedDuration),
-      distance: newRoute.value.distance.trim(),
-      status: newRoute.value.status,
-      createdAt: new Date().toISOString()
+    const response = await adminApi.updateRoute(editingRouteId.value, {
+      code: editRoute.value.code.trim(),
+      origin: editRoute.value.origin.trim(),
+      destination: editRoute.value.destination.trim(),
+      distance: editRoute.value.distance ? parseInt(editRoute.value.distance) : null,
+      departureTime: editRoute.value.departureTime,
+      estimatedDuration: parseInt(editRoute.value.estimatedDuration),
+      stops: editRoute.value.stops ? editRoute.value.stops.split(',').map(s => s.trim()) : [],
+      status: editRoute.value.status
     })
 
-    routeMessage.value = { type: 'success', text: 'Rute berhasil ditambahkan' }
-    showNewRouteForm.value = false
-    newRoute.value = { code: '', origin: '', destination: '', stops: '', departureTime: '', estimatedDuration: '', distance: '', status: 'active' }
-
-    setTimeout(() => {
-      routeMessage.value = { type: '', text: '' }
-    }, 3000)
+    if (response.data) {
+      const index = routes.value.findIndex(r => r.id === editingRouteId.value)
+      if (index !== -1) {
+        routes.value[index] = response.data
+      }
+      routeMessage.value = { type: 'success', text: 'Rute berhasil diperbarui' }
+      editingRouteId.value = null
+      
+      setTimeout(() => {
+        routeMessage.value = { type: '', text: '' }
+      }, 3000)
+    } else {
+      routeMessage.value = { type: 'error', text: response.message || 'Gagal memperbarui rute' }
+    }
   } catch (error) {
-    routeMessage.value = { type: 'error', text: 'Gagal menambahkan rute' }
+    console.error('Error updating route:', error)
+    routeMessage.value = { type: 'error', text: error.message || 'Gagal memperbarui rute' }
   } finally {
     isLoadingRoute.value = false
   }
 }
 
-const handleDeleteRoute = (id) => {
-  if (!confirm('Yakin ingin menghapus rute ini?')) return
-  const index = routes.value.findIndex(r => r.id === id)
-  if (index !== -1) {
-    routes.value.splice(index, 1)
-    routeMessage.value = { type: 'success', text: 'Rute berhasil dihapus' }
-    setTimeout(() => {
-      routeMessage.value = { type: '', text: '' }
-    }, 3000)
-  }
+const handleCancelEditRoute = () => {
+  editingRouteId.value = null
 }
+
 
 const handleAddRefund = () => {
   if (!newRefundForm.value.orderId || !newRefundForm.value.amount) {
@@ -186,28 +340,133 @@ const handleAddRefund = () => {
   newRefundForm.value = { orderId: '', amount: '', reason: '', user: '' }
 }
 
-const handleUpdateRefundStatus = (refund, newStatus) => {
-  const index = refunds.value.findIndex(r => r.id === refund.id)
-  if (index !== -1) {
-    refunds.value[index].status = newStatus
+const handleUpdateRefundStatus = async (refund, newStatus) => {
+  try {
+    const response = await adminApi.updateRefundStatus(refund.id, newStatus)
+    if (response.data) {
+      const index = refunds.value.findIndex(r => r.id === refund.id)
+      if (index !== -1) {
+        refunds.value[index].status = newStatus
+      }
+    }
+  } catch (error) {
+    console.error('Error updating refund status:', error)
+    alert('Gagal mengupdate status refund')
   }
 }
 
-const handleAddStation = () => {
-  if (!newStation.value.code || !newStation.value.name || !newStation.value.city) {
-    alert('Silakan isi semua field')
+const stationMessage = ref({ type: '', text: '' })
+const isLoadingStation = ref(false)
+const editingStationId = ref(null)
+const editStation = ref({ code: '', name: '', city: '', latitude: null, longitude: null, active: true })
+
+const handleEditStation = (station) => {
+  editingStationId.value = station.id
+  editStation.value = { ...station }
+}
+
+const handleSaveEditStation = async () => {
+  if (!editStation.value.code || !editStation.value.name || !editStation.value.city) {
+    stationMessage.value = { type: 'error', text: 'Silakan isi semua field yang diperlukan' }
     return
   }
-  const id = Math.max(...stations.value.map(s => s.id), 0) + 1
-  stations.value.push({ id, ...newStation.value })
-  showNewStationForm.value = false
-  newStation.value = { code: '', name: '', city: '', active: true }
+
+  isLoadingStation.value = true
+  stationMessage.value = { type: '', text: '' }
+
+  try {
+    const response = await adminApi.updateStation(editingStationId.value, {
+      code: editStation.value.code.trim(),
+      name: editStation.value.name.trim(),
+      city: editStation.value.city.trim(),
+      latitude: editStation.value.latitude,
+      longitude: editStation.value.longitude,
+      active: editStation.value.active
+    })
+
+    if (response.data) {
+      const index = stations.value.findIndex(s => s.id === editingStationId.value)
+      if (index !== -1) {
+        stations.value[index] = response.data
+      }
+      stationMessage.value = { type: 'success', text: 'Stasiun berhasil diperbarui' }
+      editingStationId.value = null
+      
+      setTimeout(() => {
+        stationMessage.value = { type: '', text: '' }
+      }, 3000)
+    } else {
+      stationMessage.value = { type: 'error', text: response.message || 'Gagal memperbarui stasiun' }
+    }
+  } catch (error) {
+    console.error('Error updating station:', error)
+    stationMessage.value = { type: 'error', text: error.message || 'Gagal memperbarui stasiun' }
+  } finally {
+    isLoadingStation.value = false
+  }
 }
 
-const handleDeleteStation = (id) => {
-  const index = stations.value.findIndex(s => s.id === id)
-  if (index !== -1) {
-    stations.value.splice(index, 1)
+const handleCancelEditStation = () => {
+  editingStationId.value = null
+}
+
+const handleAddStation = async () => {
+  if (!newStation.value.code || !newStation.value.name || !newStation.value.city) {
+    stationMessage.value = { type: 'error', text: 'Silakan isi semua field yang diperlukan' }
+    return
+  }
+
+  isLoadingStation.value = true
+  stationMessage.value = { type: '', text: '' }
+
+  try {
+    const response = await adminApi.createStation({
+      code: newStation.value.code.trim(),
+      name: newStation.value.name.trim(),
+      city: newStation.value.city.trim(),
+      latitude: newStation.value.latitude,
+      longitude: newStation.value.longitude,
+      active: newStation.value.active
+    })
+
+    if (response.data) {
+      stations.value.push(response.data)
+      stationMessage.value = { type: 'success', text: 'Stasiun berhasil ditambahkan' }
+      showNewStationForm.value = false
+      newStation.value = { code: '', name: '', city: '', latitude: null, longitude: null, active: true }
+      
+      setTimeout(() => {
+        stationMessage.value = { type: '', text: '' }
+      }, 3000)
+    } else {
+      stationMessage.value = { type: 'error', text: response.message || 'Gagal menambahkan stasiun' }
+    }
+  } catch (error) {
+    console.error('Error adding station:', error)
+    stationMessage.value = { type: 'error', text: error.message || 'Gagal menambahkan stasiun' }
+  } finally {
+    isLoadingStation.value = false
+  }
+}
+
+const handleDeleteStation = async (id) => {
+  if (!confirm('Yakin ingin menghapus stasiun ini?')) return
+  
+  try {
+    const response = await adminApi.deleteStation(id)
+    if (response.data || response.success !== false) {
+      const index = stations.value.findIndex(s => s.id === id)
+      if (index !== -1) {
+        stations.value.splice(index, 1)
+      }
+      stationMessage.value = { type: 'success', text: 'Stasiun berhasil dihapus' }
+      setTimeout(() => {
+        stationMessage.value = { type: '', text: '' }
+      }, 3000)
+    }
+  } catch (error) {
+    console.error('Error deleting station:', error)
+    stationMessage.value = { type: 'error', text: 'Gagal menghapus stasiun' }
   }
 }
 
@@ -240,13 +499,6 @@ const handleAddSchedule = () => {
   newSchedule.value = { trainCode: '', routeCode: '', departureTime: '', arrivalTime: '', trainType: '', status: 'active' }
 }
 
-const handleDeleteSchedule = (id) => {
-  const index = schedules.value.findIndex(s => s.id === id)
-  if (index !== -1) {
-    schedules.value.splice(index, 1)
-  }
-}
-
 const handleAddTrain = async () => {
   // Validation
   if (!newTrain.value.code.trim()) {
@@ -265,55 +517,112 @@ const handleAddTrain = async () => {
     trainMessage.value = { type: 'error', text: 'Kapasitas harus lebih dari 0' }
     return
   }
-  
-  // Check duplicate code
-  if (trains.value.some(t => t.code === newTrain.value.code)) {
-    trainMessage.value = { type: 'error', text: 'Kode Kereta sudah ada' }
-    return
-  }
 
   isLoadingTrain.value = true
   trainMessage.value = { type: '', text: '' }
   
   try {
-    const id = Math.max(...trains.value.map(t => t.id), 0) + 1
-    trains.value.push({
-      id,
+    const response = await adminApi.createTrain({
       code: newTrain.value.code.trim(),
       name: newTrain.value.name.trim(),
       type: newTrain.value.type.trim(),
       capacity: parseInt(newTrain.value.capacity),
-      status: newTrain.value.status,
-      schedules: [],
-      createdAt: new Date().toISOString()
+      status: newTrain.value.status
     })
-    
-    trainMessage.value = { type: 'success', text: 'Kereta berhasil ditambahkan' }
-    showNewTrainForm.value = false
-    newTrain.value = { code: '', name: '', type: '', capacity: '', status: 'active' }
-    
-    // Clear message after 3 seconds
-    setTimeout(() => {
-      trainMessage.value = { type: '', text: '' }
-    }, 3000)
+
+    if (response.data) {
+      trains.value.push({ ...response.data, schedules: [] })
+      trainMessage.value = { type: 'success', text: 'Kereta berhasil ditambahkan' }
+      showNewTrainForm.value = false
+      newTrain.value = { code: '', name: '', type: '', capacity: '', status: 'active' }
+      
+      setTimeout(() => {
+        trainMessage.value = { type: '', text: '' }
+      }, 3000)
+    } else {
+      trainMessage.value = { type: 'error', text: response.message || 'Gagal menambahkan kereta' }
+    }
   } catch (error) {
-    trainMessage.value = { type: 'error', text: 'Gagal menambahkan kereta' }
+    console.error('Error adding train:', error)
+    trainMessage.value = { type: 'error', text: error.message || 'Gagal menambahkan kereta' }
   } finally {
     isLoadingTrain.value = false
   }
 }
 
-const handleDeleteTrain = (id) => {
+const handleDeleteTrain = async (id) => {
   if (!confirm('Yakin ingin menghapus kereta ini?')) return
-  const index = trains.value.findIndex(t => t.id === id)
-  if (index !== -1) {
-    trains.value.splice(index, 1)
-    trainMessage.value = { type: 'success', text: 'Kereta berhasil dihapus' }
-    setTimeout(() => {
-      trainMessage.value = { type: '', text: '' }
-    }, 3000)
+  
+  try {
+    const response = await adminApi.deleteTrain(id)
+    if (response.data || response.success !== false) {
+      const index = trains.value.findIndex(t => t.id === id)
+      if (index !== -1) {
+        trains.value.splice(index, 1)
+      }
+      trainMessage.value = { type: 'success', text: 'Kereta berhasil dihapus' }
+      setTimeout(() => {
+        trainMessage.value = { type: '', text: '' }
+      }, 3000)
+    }
+  } catch (error) {
+    console.error('Error deleting train:', error)
+    trainMessage.value = { type: 'error', text: 'Gagal menghapus kereta' }
   }
 }
+
+const editingTrainId = ref(null)
+const editTrain = ref({ code: '', name: '', type: '', capacity: '', status: 'active' })
+
+const handleEditTrain = (train) => {
+  editingTrainId.value = train.id
+  editTrain.value = { ...train }
+}
+
+const handleSaveEditTrain = async () => {
+  if (!editTrain.value.code || !editTrain.value.name || !editTrain.value.type || !editTrain.value.capacity) {
+    trainMessage.value = { type: 'error', text: 'Silakan isi semua field yang diperlukan' }
+    return
+  }
+
+  isLoadingTrain.value = true
+  trainMessage.value = { type: '', text: '' }
+
+  try {
+    const response = await adminApi.updateTrain(editingTrainId.value, {
+      code: editTrain.value.code.trim(),
+      name: editTrain.value.name.trim(),
+      type: editTrain.value.type.trim(),
+      capacity: parseInt(editTrain.value.capacity),
+      status: editTrain.value.status
+    })
+
+    if (response.data) {
+      const index = trains.value.findIndex(t => t.id === editingTrainId.value)
+      if (index !== -1) {
+        trains.value[index] = response.data
+      }
+      trainMessage.value = { type: 'success', text: 'Kereta berhasil diperbarui' }
+      editingTrainId.value = null
+      
+      setTimeout(() => {
+        trainMessage.value = { type: '', text: '' }
+      }, 3000)
+    } else {
+      trainMessage.value = { type: 'error', text: response.message || 'Gagal memperbarui kereta' }
+    }
+  } catch (error) {
+    console.error('Error updating train:', error)
+    trainMessage.value = { type: 'error', text: error.message || 'Gagal memperbarui kereta' }
+  } finally {
+    isLoadingTrain.value = false
+  }
+}
+
+const handleCancelEditTrain = () => {
+  editingTrainId.value = null
+}
+
 
 const handleAddScheduleToTrain = (trainId) => {
   if (!newScheduleForTrain.value.route || !newScheduleForTrain.value.departureTime || !newScheduleForTrain.value.arrivalTime) {
@@ -551,8 +860,8 @@ const initCharts = () => {
   }
 }
 
-// Check jika sudah login saat mount
-onMounted(() => {
+// Check jika sudah login saat mount dan load data dari API
+onMounted(async () => {
   const token = localStorage.getItem('auth_token')
   const userProfile = localStorage.getItem('userProfile')
   
@@ -561,6 +870,7 @@ onMounted(() => {
     if (user.role === 'admin') {
       isLoggedIn.value = true
       adminName.value = `${user.first_name} ${user.last_name}`
+      
       // Load Chart.js script
       const script = document.createElement('script')
       script.src = 'https://cdn.jsdelivr.net/npm/chart.js'
@@ -569,6 +879,31 @@ onMounted(() => {
         setTimeout(initCharts, 100)
       }
       document.head.appendChild(script)
+
+      // Load data from API
+      try {
+        const stationsRes = await adminApi.getStations()
+        if (stationsRes.data) {
+          stations.value = Array.isArray(stationsRes.data) ? stationsRes.data : []
+        }
+
+        const trainsRes = await adminApi.getTrains()
+        if (trainsRes.data) {
+          trains.value = Array.isArray(trainsRes.data) ? trainsRes.data : []
+        }
+
+        const routesRes = await adminApi.getRoutes()
+        if (routesRes.data) {
+          routes.value = Array.isArray(routesRes.data) ? routesRes.data : []
+        }
+
+        const refundsRes = await adminApi.getRefunds()
+        if (refundsRes.data) {
+          refunds.value = Array.isArray(refundsRes.data) ? refundsRes.data : []
+        }
+      } catch (error) {
+        console.error('Error loading admin data:', error)
+      }
     } else {
       router.push('/login')
     }
@@ -940,13 +1275,237 @@ onMounted(() => {
 
           <div class="master-tabs">
             <button 
-              v-for="type in ['trains', 'routes']"
+              v-for="type in ['stations', 'trains', 'routes']"
               :key="type"
               :class="['tab-btn', { active: masterDataType === type }]"
               @click="masterDataType = type"
             >
-              {{ type === 'trains' ? 'Kereta' : 'Rute' }}
+              {{ type === 'stations' ? 'Stasiun' : (type === 'trains' ? 'Kereta' : 'Rute') }}
             </button>
+          </div>
+
+          <!-- Stations Management -->
+          <div v-if="masterDataType === 'stations'" class="master-data-content">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+              <button class="btn-primary" @click="showNewStationForm = !showNewStationForm">
+                + Tambah Stasiun Baru
+              </button>
+            </div>
+
+            <!-- Add New Station Form -->
+            <div v-if="showNewStationForm" class="form-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h3>Form Stasiun Baru</h3>
+                <button class="close-btn" @click="showNewStationForm = false">×</button>
+              </div>
+
+              <!-- Message Alert -->
+              <div v-if="stationMessage.text" :class="['message-alert', stationMessage.type]" style="margin-bottom: 1rem;">
+                {{ stationMessage.text }}
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Kode Stasiun <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newStation.code" 
+                    type="text" 
+                    placeholder="Contoh: STN-001" 
+                    class="form-input"
+                    @input="stationMessage.type = ''"
+                    maxlength="10"
+                  />
+                  <small style="color: #6b7280;">Format unik untuk identifikasi stasiun</small>
+                </div>
+                <div class="form-group">
+                  <label>Nama Stasiun <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newStation.name" 
+                    type="text" 
+                    placeholder="Contoh: Stasiun Jakarta Kota" 
+                    class="form-input"
+                    @input="stationMessage.type = ''"
+                    maxlength="100"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Kota <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newStation.city" 
+                    type="text" 
+                    placeholder="Contoh: Jakarta" 
+                    class="form-input"
+                    @input="stationMessage.type = ''"
+                    maxlength="100"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Latitude</label>
+                  <input 
+                    v-model="newStation.latitude" 
+                    type="number" 
+                    placeholder="-6.127743" 
+                    class="form-input"
+                    step="0.000001"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Longitude</label>
+                  <input 
+                    v-model="newStation.longitude" 
+                    type="number" 
+                    placeholder="106.630226" 
+                    class="form-input"
+                    step="0.000001"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Status</label>
+                  <select v-model="newStation.active" class="form-input">
+                    <option :value="true">Aktif</option>
+                    <option :value="false">Nonaktif</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button 
+                  class="btn-success" 
+                  @click="handleAddStation"
+                  :disabled="isLoadingStation"
+                >
+                  <span v-if="!isLoadingStation">Simpan</span>
+                  <span v-else>Menyimpan...</span>
+                </button>
+                <button 
+                  class="btn-cancel" 
+                  @click="showNewStationForm = false"
+                  :disabled="isLoadingStation"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+
+            <!-- Edit Station Form -->
+            <div v-if="editingStationId !== null" class="form-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h3>Edit Stasiun</h3>
+                <button class="close-btn" @click="handleCancelEditStation">×</button>
+              </div>
+
+              <!-- Message Alert -->
+              <div v-if="stationMessage.text" :class="['message-alert', stationMessage.type]" style="margin-bottom: 1rem;">
+                {{ stationMessage.text }}
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Kode Stasiun <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="editStation.code" 
+                    type="text" 
+                    placeholder="Contoh: STN-001" 
+                    class="form-input"
+                    @input="stationMessage.type = ''"
+                    maxlength="10"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Nama Stasiun <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="editStation.name" 
+                    type="text" 
+                    placeholder="Contoh: Stasiun Jakarta Kota" 
+                    class="form-input"
+                    @input="stationMessage.type = ''"
+                    maxlength="100"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Kota <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="editStation.city" 
+                    type="text" 
+                    placeholder="Contoh: Jakarta" 
+                    class="form-input"
+                    @input="stationMessage.type = ''"
+                    maxlength="100"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Latitude</label>
+                  <input 
+                    v-model="editStation.latitude" 
+                    type="number" 
+                    placeholder="-6.127743" 
+                    class="form-input"
+                    step="0.000001"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Longitude</label>
+                  <input 
+                    v-model="editStation.longitude" 
+                    type="number" 
+                    placeholder="106.630226" 
+                    class="form-input"
+                    step="0.000001"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Status</label>
+                  <select v-model="editStation.active" class="form-input">
+                    <option :value="true">Aktif</option>
+                    <option :value="false">Nonaktif</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button 
+                  class="btn-success" 
+                  @click="handleSaveEditStation"
+                  :disabled="isLoadingStation"
+                >
+                  <span v-if="!isLoadingStation">Simpan</span>
+                  <span v-else>Menyimpan...</span>
+                </button>
+                <button 
+                  class="btn-cancel" 
+                  @click="handleCancelEditStation"
+                  :disabled="isLoadingStation"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+
+            <!-- Stations List -->
+            <div class="routes-list">
+              <div v-if="stations.length === 0" class="empty-state">
+                <p>Belum ada stasiun. Tambahkan stasiun baru untuk memulai.</p>
+              </div>
+
+              <div v-for="station in stations" :key="station.id" class="route-card">
+                <div class="route-header">
+                  <div class="route-info">
+                    <h4>{{ station.code }} - {{ station.name }}</h4>
+                    <p class="route-meta">
+                      <span>Kota: {{ station.city }}</span>
+                      <span :class="['status', station.active ? 'active' : 'inactive']">{{ station.active ? 'Aktif' : 'Nonaktif' }}</span>
+                    </p>
+                  </div>
+                  <div class="action-btns">
+                    <button class="btn-edit" @click="handleEditStation(station)">Edit</button>
+                    <button class="btn-delete" @click="handleDeleteStation(station.id)">Hapus</button>
+                  </div>
+                </div>
+                <div v-if="station.latitude && station.longitude" class="route-stops">
+                  <p style="margin: 0.5rem 0; color: #6b7280; font-size: 0.875rem;">
+                    <strong>Koordinat:</strong> {{ station.latitude }}, {{ station.longitude }}
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <!-- Trains Management -->
@@ -1051,6 +1610,96 @@ onMounted(() => {
                 <p>Belum ada kereta. Tambahkan kereta baru untuk memulai.</p>
               </div>
 
+              <!-- Edit Train Form -->
+              <div v-if="editingTrainId !== null" class="form-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                  <h3>Edit Kereta</h3>
+                  <button class="close-btn" @click="handleCancelEditTrain">×</button>
+                </div>
+
+                <!-- Message Alert -->
+                <div v-if="trainMessage.text" :class="['message-alert', trainMessage.type]" style="margin-bottom: 1rem;">
+                  {{ trainMessage.text }}
+                </div>
+
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Kode Kereta <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editTrain.code" 
+                      type="text" 
+                      placeholder="Contoh: KT-001" 
+                      class="form-input"
+                      @input="trainMessage.type = ''"
+                      maxlength="20"
+                    />
+                    <small style="color: #6b7280;">Format unik untuk identifikasi kereta</small>
+                  </div>
+                  <div class="form-group">
+                    <label>Nama Kereta <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editTrain.name" 
+                      type="text" 
+                      placeholder="Contoh: Eksekutif Pagi" 
+                      class="form-input"
+                      @input="trainMessage.type = ''"
+                      maxlength="100"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Tipe Kereta <span style="color: #dc2626;">*</span></label>
+                    <select v-model="editTrain.type" class="form-input" @change="trainMessage.type = ''">
+                      <option value="">-- Pilih Tipe --</option>
+                      <option value="Lokal">Lokal</option>
+                      <option value="Komuter">Komuter</option>
+                      <option value="Ekspres">Ekspres</option>
+                      <option value="Bisnis">Bisnis</option>
+                      <option value="Eksekutif">Eksekutif</option>
+                      <option value="Sleeper">Sleeper</option>
+                      <option value="LRT">LRT</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Kapasitas <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editTrain.capacity" 
+                      type="number" 
+                      placeholder="500" 
+                      class="form-input"
+                      @input="trainMessage.type = ''"
+                      min="1"
+                      max="9999"
+                    />
+                    <small style="color: #6b7280;">Penumpang maksimal</small>
+                  </div>
+                  <div class="form-group">
+                    <label>Status</label>
+                    <select v-model="editTrain.status" class="form-input" @change="trainMessage.type = ''">
+                      <option value="active">Aktif</option>
+                      <option value="inactive">Nonaktif</option>
+                      <option value="maintenance">Maintenance</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button 
+                    class="btn-success" 
+                    @click="handleSaveEditTrain"
+                    :disabled="isLoadingTrain"
+                  >
+                    <span v-if="!isLoadingTrain">Simpan</span>
+                    <span v-else>Menyimpan...</span>
+                  </button>
+                  <button 
+                    class="btn-cancel" 
+                    @click="handleCancelEditTrain"
+                    :disabled="isLoadingTrain"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </div>
+
               <div v-for="train in trains" :key="train.id" class="train-card">
                 <div class="train-header" @click="expandedTrainId = expandedTrainId === train.id ? null : train.id" style="cursor: pointer;">
                   <div class="train-info">
@@ -1069,6 +1718,9 @@ onMounted(() => {
                 </div>
 
                 <div v-if="expandedTrainId === train.id" class="train-actions">
+                  <button class="btn-edit" @click="handleEditTrain(train)">
+                    Edit Kereta
+                  </button>
                   <button class="btn-delete" @click="handleDeleteTrain(train.id)">
                     Hapus Kereta
                   </button>
@@ -1274,6 +1926,119 @@ onMounted(() => {
                 <p>Belum ada rute. Tambahkan rute baru untuk memulai.</p>
               </div>
 
+              <!-- Edit Route Form -->
+              <div v-if="editingRouteId !== null" class="form-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                  <h3>Edit Rute</h3>
+                  <button class="close-btn" @click="handleCancelEditRoute">×</button>
+                </div>
+
+                <!-- Message Alert -->
+                <div v-if="routeMessage.text" :class="['message-alert', routeMessage.type]" style="margin-bottom: 1rem;">
+                  {{ routeMessage.text }}
+                </div>
+
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label>Kode Rute <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editRoute.code" 
+                      type="text" 
+                      placeholder="Contoh: RT-001" 
+                      class="form-input"
+                      @input="routeMessage.type = ''"
+                      maxlength="20"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Stasiun Awal <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editRoute.origin" 
+                      type="text" 
+                      placeholder="Jakarta Kota" 
+                      class="form-input"
+                      @input="routeMessage.type = ''"
+                      maxlength="50"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Stasiun Tujuan <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editRoute.destination" 
+                      type="text" 
+                      placeholder="Surabaya Gubeng" 
+                      class="form-input"
+                      @input="routeMessage.type = ''"
+                      maxlength="50"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Jam Keberangkatan <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editRoute.departureTime" 
+                      type="time" 
+                      class="form-input"
+                      @input="routeMessage.type = ''"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Durasi Perjalanan (jam) <span style="color: #dc2626;">*</span></label>
+                    <input 
+                      v-model="editRoute.estimatedDuration" 
+                      type="number" 
+                      placeholder="12" 
+                      class="form-input"
+                      @input="routeMessage.type = ''"
+                      min="1"
+                      max="999"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Jarak (km)</label>
+                    <input 
+                      v-model="editRoute.distance" 
+                      type="text" 
+                      placeholder="720" 
+                      class="form-input"
+                      maxlength="20"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Stasiun Antara (pisahkan dengan koma)</label>
+                    <input 
+                      v-model="editRoute.stops" 
+                      type="text" 
+                      placeholder="Cirebon, Pekalongan, Semarang" 
+                      class="form-input"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Status</label>
+                    <select v-model="editRoute.status" class="form-input">
+                      <option value="active">Aktif</option>
+                      <option value="inactive">Nonaktif</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-actions">
+                  <button 
+                    class="btn-success" 
+                    @click="handleSaveEditRoute"
+                    :disabled="isLoadingRoute"
+                  >
+                    <span v-if="!isLoadingRoute">Simpan</span>
+                    <span v-else>Menyimpan...</span>
+                  </button>
+                  <button 
+                    class="btn-cancel" 
+                    @click="handleCancelEditRoute"
+                    :disabled="isLoadingRoute"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </div>
+
               <div v-for="route in routes" :key="route.id" class="route-card">
                 <div class="route-header">
                   <div class="route-info">
@@ -1285,7 +2050,10 @@ onMounted(() => {
                       <span :class="['status', route.status]">{{ route.status === 'active' ? 'Aktif' : 'Nonaktif' }}</span>
                     </p>
                   </div>
-                  <button class="btn-delete" @click="handleDeleteRoute(route.id)">Hapus</button>
+                  <div class="action-btns">
+                    <button class="btn-edit" @click="handleEditRoute(route)">Edit</button>
+                    <button class="btn-delete" @click="handleDeleteRoute(route.id)">Hapus</button>
+                  </div>
                 </div>
                 <div v-if="route.stops && route.stops.length > 0" class="route-stops">
                   <p style="margin: 0.5rem 0; color: #6b7280; font-size: 0.875rem;">
@@ -2038,7 +2806,8 @@ onMounted(() => {
 .action-btns {
   display: flex;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .btn-small {
@@ -2196,6 +2965,21 @@ onMounted(() => {
   background: #fecaca;
 }
 
+.btn-edit {
+  padding: 0.375rem 0.75rem;
+  background: #dbeafe;
+  color: #0c2340;
+  border: none;
+  border-radius: 6px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-right: 0.5rem;
+}
+
+.btn-edit:hover {
+  background: #bfdbfe;
+}
+
 .welcome-section {
   margin-bottom: 1.5rem;
 }
@@ -2333,6 +3117,7 @@ onMounted(() => {
   align-items: center;
   background: white;
   border-bottom: 1px solid #f3f4f6;
+  gap: 1rem;
 }
 
 .route-info {

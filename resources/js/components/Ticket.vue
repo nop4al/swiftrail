@@ -14,7 +14,10 @@
       <button 
         class="main-tab-btn" 
         :class="{ active: mainTab === 'refunds' }"
-        @click="mainTab = 'refunds'">
+        @click="() => {
+          devModalMessage.value = 'Fitur Refund sedang dalam tahap pengembangan. Terima kasih atas kesabaran Anda!';
+          showDevModal.value = true;
+        }">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
           <path d="M9 11H7v2h2v-2zm4 0h-2v2h2v-2zm4 0h-2v2h2v-2zm2-7h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/>
         </svg>
@@ -132,6 +135,7 @@
               <button class="btn-secondary" @click="viewETicket(ticket)">Lihat E-Tiket</button>
               <button class="btn-secondary" @click="shareTicket(ticket)">Bagikan</button>
               <button class="btn-secondary tracking-btn" @click="goToTracking(ticket)">Tracking</button>
+              <button class="btn-refund" @click="requestRefund(ticket)">Ajukan Refund</button>
             </div>
           </div>
         </div>
@@ -316,14 +320,185 @@
 
     <!-- REFUNDS TAB -->
     <div v-else-if="mainTab === 'refunds'" class="refunds-container">
-      <div class="empty-state">
-        <div class="empty-icon">
-          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-          </svg>
+      <!-- Request Form Container -->
+      <div class="request-form-container">
+        <div class="page-header">
+          <h1>Ajukan Refund Tiket</h1>
+          <p>Isi formulir di bawah untuk mengajukan pengembalian dana tiket Anda</p>
         </div>
-        <h3>Fitur Refund Segera Hadir</h3>
-        <p>Kami sedang mempersiapkan fitur pengembalian dana yang lebih baik untuk Anda</p>
+
+        <!-- Step 1: Select Ticket -->
+        <div class="form-section">
+          <h3 class="section-title">1. Pilih Tiket</h3>
+          
+          <div class="form-group">
+            <label>Cari Tiket</label>
+            <div class="select-ticket-box">
+              <input 
+                v-model="requestForm.searchTicket" 
+                type="text" 
+                placeholder="Masukkan nomor tiket atau cari dari daftar..."
+                class="form-input"
+                @focus="showTicketDropdown = true"
+                @blur="() => setTimeout(() => showTicketDropdown = false, 200)"
+              />
+              <div v-if="filteredAvailableTickets.length > 0 && showTicketDropdown" class="ticket-dropdown">
+                <div 
+                  v-for="ticket in filteredAvailableTickets" 
+                  :key="ticket.id"
+                  class="ticket-option"
+                  @click="selectTicket(ticket)"
+                >
+                  <span class="ticket-code">{{ ticket.ticketNumber }}</span>
+                  <span class="ticket-route">{{ ticket.from }} → {{ ticket.to }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Selected Ticket Display -->
+          <div v-if="requestForm.ticketId" class="selected-ticket">
+            <div class="ticket-details">
+              <div class="detail-row">
+                <span class="label">Nomor Tiket:</span>
+                <span class="value">{{ requestForm.ticketNumber }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Kereta:</span>
+                <span class="value">{{ requestForm.trainName }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Rute:</span>
+                <span class="value">{{ requestForm.from }} → {{ requestForm.to }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Harga Tiket:</span>
+                <span class="value">{{ formatPrice(requestForm.ticketPrice) }}</span>
+              </div>
+            </div>
+            <button class="btn-change" @click="requestForm.ticketId = null">Ubah Tiket</button>
+          </div>
+        </div>
+
+        <!-- Step 2: Refund Reason -->
+        <div v-if="requestForm.ticketId" class="form-section">
+          <h3 class="section-title">2. Alasan Pembatalan</h3>
+          
+          <div class="form-group">
+            <label>Pilih Alasan <span class="required">*</span></label>
+            <select v-model="requestForm.reason" class="form-input">
+              <option value="">-- Pilih Alasan --</option>
+              <option value="Personal">Alasan Pribadi</option>
+              <option value="Kesehatan">Masalah Kesehatan</option>
+              <option value="Jadwal">Perubahan Jadwal</option>
+              <option value="Lainnya">Lainnya</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Keterangan Tambahan <span class="required">*</span></label>
+            <textarea 
+              v-model="requestForm.description" 
+              placeholder="Jelaskan alasan pembatalan secara detail (minimal 10 karakter)..."
+              class="form-textarea"
+              rows="4"
+            ></textarea>
+            <small class="char-count" :class="{ 'char-warning': requestForm.description.length < 10 && requestForm.description.length > 0 }">
+              {{ requestForm.description.length }}/500
+              <span v-if="requestForm.description.length < 10 && requestForm.description.length > 0">
+                (minimal 10 karakter)
+              </span>
+            </small>
+          </div>
+        </div>
+
+        <!-- Step 3: SwiftPay Wallet -->
+        <div v-if="requestForm.ticketId && requestForm.reason" class="form-section">
+          <h3 class="section-title">3. Tujuan Pengembalian Dana - SwiftPay</h3>
+          
+          <div v-if="selectedSwiftPayWallet" class="wallet-info-auto">
+            <p><strong>✓ Dana akan dikembalikan ke dompet Anda:</strong></p>
+            <div class="wallet-card">
+              <div class="wallet-number">{{ selectedSwiftPayWallet.wallet_number }}</div>
+              <div class="wallet-balance">Saldo: {{ formatPrice(selectedSwiftPayWallet.balance) }}</div>
+            </div>
+          </div>
+          
+          <div v-else class="wallet-warning">
+            <p>⚠️ Tidak ada dompet SwiftPay yang aktif. Silakan hubungi dukungan pelanggan.</p>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div v-if="requestForm.ticketId" class="summary-section">
+          <h3 class="section-title">Ringkasan Pengajuan</h3>
+          
+          <div class="summary-box">
+            <div class="summary-row">
+              <span class="label">Harga Tiket Asli</span>
+              <span class="value">{{ formatPrice(requestForm.ticketPrice) }}</span>
+            </div>
+            <div class="summary-row">
+              <span class="label">Biaya Admin (5%)</span>
+              <span class="value">-{{ formatPrice(requestForm.ticketPrice * 0.05) }}</span>
+            </div>
+            <div class="summary-row total">
+              <span class="label">Jumlah Refund</span>
+              <span class="value">{{ formatPrice(requestForm.ticketPrice * 0.95) }}</span>
+            </div>
+          </div>
+
+          <div class="terms-checkbox">
+            <input 
+              v-model="requestForm.agreedToTerms" 
+              type="checkbox" 
+              id="agree-terms"
+            />
+            <label for="agree-terms">
+              Saya setuju dengan kebijakan refund dan tidak akan melakukan dispute setelah dana dikembalikan
+            </label>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div v-if="requestForm.ticketId" class="form-actions">
+          <button 
+            class="btn-submit"
+            @click="submitRefundRequest"
+            :disabled="!isRefundFormValid()"
+          >
+            <span v-if="!submittingRefund">Ajukan Refund</span>
+            <span v-else>Memproses...</span>
+          </button>
+          <button class="btn-cancel" @click="resetRefundForm">Batal</button>
+        </div>
+
+        <!-- Success Message -->
+        <div v-if="refundRequestSuccess" class="success-message">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+          </svg>
+          <div>
+            <h4>Refund Berhasil Diajukan!</h4>
+            <p>Tiket refund Anda akan diproses dalam 3-5 hari kerja</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== DEVELOPMENT MODAL ========== -->
+  <div v-if="showDevModal" class="dev-modal-overlay" @click.self="showDevModal = false">
+    <div class="dev-modal">
+      <div class="dev-modal-header">
+        <h3>Informasi</h3>
+        <button class="dev-modal-close" @click="showDevModal = false">✕</button>
+      </div>
+      <div class="dev-modal-body">
+        <p>{{ devModalMessage }}</p>
+      </div>
+      <div class="dev-modal-footer">
+        <button class="dev-modal-ok" @click="showDevModal = false">OK</button>
       </div>
     </div>
   </div>
@@ -333,6 +508,7 @@
 import { reactive, computed, ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import QRCode from 'qrcode';
+import { refundApi } from '../utils/refundApi.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -344,6 +520,19 @@ const mainTab = ref('tickets');
 // View states
 const showETicketDetail = ref(false);
 const selectedTicket = ref(null);
+
+// Refund Modal States
+const showRefundModal = ref(false);
+const activeTab = ref('request');
+const availableTickets = ref([]);
+const showTicketDropdown = ref(false);
+const userSwiftPayWallets = ref([]);
+const submittingRefund = ref(false);
+const refundRequestSuccess = ref(false);
+
+// Modal states
+const showDevModal = ref(false);
+const devModalMessage = ref('');
 
 // Filter states
 const activeFilter = ref('all');
@@ -360,6 +549,22 @@ const filterTabs = [
 
 // Ticket data dari API
 const tickets = reactive([]);
+
+// Refund Form State
+const requestForm = reactive({
+  ticketId: null,
+  ticketNumber: '',
+  trainName: '',
+  from: '',
+  to: '',
+  ticketPrice: 0,
+  code: '',
+  searchTicket: '',
+  reason: '',
+  description: '',
+  swiftPayWalletId: '',
+  agreedToTerms: false
+});
 
 // Fetch tickets dari API
 const fetchTickets = async () => {
@@ -618,6 +823,162 @@ function goToTracking(ticket) {
         booking_code: ticket.bookingCode
       }
     });
+  }
+}
+
+function requestRefund(ticket) {
+  devModalMessage.value = 'Fitur Refund sedang dalam tahap pengembangan. Terima kasih atas kesabaran Anda!';
+  showDevModal.value = true;
+  return;
+  
+  requestForm.ticketId = ticket.id;
+  requestForm.ticketNumber = ticket.ticketNumber;
+  requestForm.trainName = ticket.trainName;
+  requestForm.from = ticket.from;
+  requestForm.to = ticket.to;
+  requestForm.ticketPrice = ticket.price;
+  requestForm.searchTicket = '';
+  showTicketDropdown.value = false;
+  
+  // Load wallets and switch to refunds tab
+  loadUserSwiftPayWallets();
+  mainTab.value = 'refunds';
+}
+
+
+// ========== REFUND FORM FUNCTIONS ==========
+const filteredAvailableTickets = computed(() => {
+  if (!showTicketDropdown.value) return [];
+  
+  let filtered = tickets;
+  
+  // Convert to ticket objects with needed fields
+  if (!availableTickets.value || availableTickets.value.length === 0) {
+    availableTickets.value = filtered.map(ticket => ({
+      id: ticket.id,
+      code: ticket.bookingCode,
+      ticketNumber: ticket.ticketNumber || ticket.bookingCode,
+      from: ticket.from,
+      to: ticket.to,
+      trainName: ticket.trainName,
+      departureDate: ticket.departureDate,
+      departureTime: ticket.departureTime,
+      price: ticket.price
+    }));
+  }
+  
+  if (!requestForm.searchTicket) return availableTickets.value;
+  
+  const search = requestForm.searchTicket.toLowerCase();
+  return availableTickets.value.filter(ticket => 
+    ticket.ticketNumber.toLowerCase().includes(search) ||
+    ticket.from.toLowerCase().includes(search) ||
+    ticket.to.toLowerCase().includes(search) ||
+    ticket.trainName.toLowerCase().includes(search)
+  );
+});
+
+function selectTicket(ticket) {
+  requestForm.ticketId = ticket.id;
+  requestForm.ticketNumber = ticket.ticketNumber;
+  requestForm.trainName = ticket.trainName;
+  requestForm.from = ticket.from;
+  requestForm.to = ticket.to;
+  requestForm.ticketPrice = ticket.price;
+  requestForm.searchTicket = '';
+  showTicketDropdown.value = false;
+}
+
+const selectedSwiftPayWallet = computed(() => {
+  return userSwiftPayWallets.value.find(wallet => wallet.id === parseInt(requestForm.swiftPayWalletId));
+});
+
+async function loadUserSwiftPayWallets() {
+  try {
+    const response = await refundApi.getUserWallets();
+    if (response.success && response.data && response.data.length > 0) {
+      userSwiftPayWallets.value = response.data;
+      // Auto-select first wallet
+      requestForm.swiftPayWalletId = response.data[0].id;
+    } else {
+      console.error('No wallets found');
+      userSwiftPayWallets.value = [];
+    }
+  } catch (error) {
+    console.error('Error loading SwiftPay wallets:', error);
+    userSwiftPayWallets.value = [];
+  }
+}
+
+function isRefundFormValid() {
+  return (
+    requestForm.ticketId &&
+    requestForm.reason &&
+    requestForm.description &&
+    requestForm.swiftPayWalletId &&
+    requestForm.agreedToTerms
+  );
+}
+
+async function submitRefundRequest() {
+  if (!isRefundFormValid()) {
+    alert('Silakan lengkapi semua field yang diperlukan');
+    return;
+  }
+
+  submittingRefund.value = true;
+  
+  try {
+    const refundData = {
+      booking_id: requestForm.ticketId,
+      reason: requestForm.reason,
+      description: requestForm.description,
+      swift_pay_wallet_id: requestForm.swiftPayWalletId
+    };
+
+    console.log('Submitting refund with data:', refundData);
+
+    // Submit to API
+    const response = await refundApi.requestRefund(refundData);
+    
+    console.log('Refund API response:', response);
+    
+    if (response.success || response.data) {
+      refundRequestSuccess.value = true;
+      
+      setTimeout(() => {
+        refundRequestSuccess.value = false;
+        resetRefundForm();
+        showRefundModal.value = false;
+      }, 3000);
+    } else {
+      const errorMsg = response.message || 'Unknown error';
+      const validationErrors = response.errors ? Object.values(response.errors).flat().join(', ') : '';
+      alert('Gagal mengajukan refund:\n' + errorMsg + (validationErrors ? '\n' + validationErrors : ''));
+    }
+  } catch (error) {
+    console.error('Error submitting refund:', error);
+    alert('Terjadi kesalahan saat mengajukan refund:\n' + error.message);
+  } finally {
+    submittingRefund.value = false;
+  }
+}
+
+function resetRefundForm() {
+  requestForm.ticketId = null;
+  requestForm.ticketNumber = '';
+  requestForm.trainName = '';
+  requestForm.from = '';
+  requestForm.to = '';
+  requestForm.ticketPrice = 0;
+  requestForm.reason = '';
+  requestForm.description = '';
+  requestForm.agreedToTerms = false;
+  requestForm.searchTicket = '';
+  
+  // Re-auto-select wallet
+  if (userSwiftPayWallets.value && userSwiftPayWallets.value.length > 0) {
+    requestForm.swiftPayWalletId = userSwiftPayWallets.value[0].id;
   }
 }
 </script>
@@ -1105,6 +1466,26 @@ function goToTracking(ticket) {
 
 .btn-secondary:hover {
   background: rgba(22, 117, 231, 0.05);
+  transform: translateY(-1px);
+}
+
+.btn-refund {
+  flex: 1;
+  min-width: 100px;
+  padding: 10px 16px;
+  background: #FF6B6B;
+  color: var(--color-white);
+  border: 2px solid #FF6B6B;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-refund:hover {
+  background: #FF5252;
+  border-color: #FF5252;
   transform: translateY(-1px);
 }
 
@@ -1658,4 +2039,628 @@ function goToTracking(ticket) {
     flex-direction: column;
   }
 }
+
+/* ========== REFUND FORM SECTION STYLES ========== */
+.refund-form-section {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.refund-form-section h2 {
+  margin: 0 0 20px 0;
+  font-size: 22px;
+  color: #1a1a1a;
+  font-weight: 600;
+}
+
+.ticket-search-wrapper {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.ticket-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ticket-option {
+  padding: 12px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.ticket-option:hover {
+  background-color: #f5f5f5;
+}
+
+.ticket-option:last-child {
+  border-bottom: none;
+}
+
+.ticket-option-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.ticket-option-route {
+  color: #666;
+  font-size: 13px;
+}
+
+.ticket-option-date {
+  font-size: 12px;
+  color: #999;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.form-actions .btn-cancel,
+.form-actions .btn-primary {
+  flex: 1;
+}
+
+.refund-form {
+  margin-top: 20px;
+}
+
+.refunds-container {
+  padding: 40px 16px;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/* ========== REQUEST FORM CONTAINER ========== */
+.request-form-container {
+  background: white;
+  padding: 32px;
+  border-radius: 16px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 32px;
+}
+
+.page-header h1 {
+  margin: 0 0 8px 0;
+  font-size: 32px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.page-header p {
+  margin: 0;
+  font-size: 16px;
+  color: #6b7280;
+}
+
+.form-section {
+  margin-bottom: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.form-section:last-of-type {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 20px 0;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.required {
+  color: #EF4444;
+}
+
+.form-input,
+.form-textarea {
+  width: 100%;
+  padding: 12px;
+  font-size: 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-family: inherit;
+  transition: all 0.3s ease;
+}
+
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: #1675E7;
+  box-shadow: 0 0 0 3px rgba(22, 117, 231, 0.1);
+  background: #f9fafb;
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.char-count {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.char-warning {
+  color: #ea580c;
+  font-weight: 600;
+}
+
+.select-ticket-box {
+  position: relative;
+}
+
+.ticket-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ticket-option {
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ticket-option:hover {
+  background: #f9fafb;
+}
+
+.ticket-option:last-child {
+  border-bottom: none;
+}
+
+.ticket-code {
+  font-weight: 600;
+  color: #1675E7;
+}
+
+.ticket-route {
+  font-size: 13px;
+  color: #6b7280;
+  margin-left: 12px;
+}
+
+.selected-ticket {
+  background: #f0f7ff;
+  border: 2px solid #1675E7;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ticket-details {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.detail-row .label {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.detail-row .value {
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.btn-change {
+  padding: 8px 16px;
+  background: transparent;
+  color: #1675E7;
+  border: 2px solid #1675E7;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  margin-left: 16px;
+}
+
+.btn-change:hover {
+  background: #1675E7;
+  color: white;
+}
+
+.summary-section {
+  background: #f9fafb;
+  padding: 20px;
+  border-radius: 8px;
+  margin: 32px 0;
+}
+
+.summary-box {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-row.total {
+  background: #f0f7ff;
+  padding: 16px;
+  margin: 0 -16px -16px -16px;
+  border-radius: 0 0 8px 8px;
+  font-weight: 700;
+  color: #1675E7;
+}
+
+.terms-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.terms-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: #1675E7;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 32px;
+}
+
+.btn-submit {
+  flex: 1;
+  padding: 14px;
+  background: linear-gradient(135deg, #1675E7, #00BFA5);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(22, 117, 231, 0.3);
+}
+
+.btn-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-cancel {
+  flex: 1;
+  padding: 14px;
+  background: white;
+  color: #1f2937;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-cancel:hover {
+  background: #f9fafb;
+  border-color: #999;
+}
+
+.success-message {
+  display: flex;
+  gap: 16px;
+  background: #d1fae5;
+  border: 2px solid #10b981;
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 20px;
+  color: #065f46;
+}
+
+.success-message svg {
+  flex-shrink: 0;
+  color: #10b981;
+}
+
+.success-message h4 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.success-message p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.wallet-info-auto {
+  background: #f0f9ff;
+  border: 2px solid #00BFA5;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.wallet-info-auto p {
+  margin: 0 0 12px 0;
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.wallet-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wallet-number {
+  font-weight: 700;
+  font-size: 16px;
+  color: #1675E7;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 1px;
+}
+
+.wallet-balance {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.wallet-warning {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 12px;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+.wallet-warning p {
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .request-form-container {
+    padding: 20px;
+  }
+
+  .ticket-details {
+    grid-template-columns: 1fr;
+  }
+
+  .selected-ticket {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .btn-change {
+    margin-left: 0;
+    margin-top: 12px;
+    width: 100%;
+  }
+
+  .form-actions {
+    flex-direction: column;
+  }
+
+  .btn-submit,
+  .btn-cancel {
+    width: 100%;
+  }
+}
+
+/* ========== DEVELOPMENT MODAL STYLES ========== */
+.dev-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dev-modal {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  width: 90%;
+  max-width: 400px;
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.dev-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f5f5f5;
+}
+
+.dev-modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.dev-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.dev-modal-close:hover {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.dev-modal-body {
+  padding: 24px 20px;
+}
+
+.dev-modal-body p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.dev-modal-footer {
+  padding: 16px 20px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-end;
+  background: #f9f9f9;
+}
+
+.dev-modal-ok {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dev-modal-ok:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
 </style>
+
+```

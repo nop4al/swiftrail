@@ -10,11 +10,15 @@ class Refund extends Model
     use HasFactory;
 
     protected $fillable = [
-        'order_id',
+        'ticket_number',
         'user_id',
+        'booking_id',
         'amount',
         'reason',
+        'refund_reason',
+        'description',
         'status',
+        'swift_pay_wallet_id',
         'processed_at',
     ];
 
@@ -29,5 +33,15 @@ class Refund extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function booking()
+    {
+        return $this->belongsTo(Booking::class);
+    }
+
+    public function swiftPayWallet()
+    {
+        return $this->belongsTo(SwiftPayWallet::class, 'swift_pay_wallet_id');
     }
 }
