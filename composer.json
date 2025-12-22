@@ -10,7 +10,12 @@
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.2",
         "laravel/tinker": "^2.10.1",
-        "midtrans/midtrans-php": "^2.6"
+        "midtrans/midtrans-php": "^2.6",
+        "symfony/clock": "<8.0",
+        "symfony/css-selector": "<8.0",
+        "symfony/event-dispatcher": "<8.0",
+        "symfony/string": "<8.0",
+        "symfony/translation": "<8.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
