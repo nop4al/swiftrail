@@ -26,9 +26,9 @@ php artisan view:clear 2>/dev/null || true
 echo "Caching configuration..."
 php artisan config:cache
 
-# Run migrations
-echo "Running migrations..."
-php artisan migrate --force 2>/dev/null || echo "Warning: Migrations failed or already run"
+# Attempt migrations - skip if DB connection fails
+echo "Attempting migrations (non-blocking)..."
+php artisan migrate --force 2>/dev/null || true
 
 # Generate other caches only if migration succeeded
 echo "Caching routes and views..."
