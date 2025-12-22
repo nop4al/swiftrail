@@ -3,8 +3,11 @@ set -e
 
 echo "Deploying Laravel app to Render..."
 
+# Clean up any stale cache
+rm -rf bootstrap/cache/routes-v7.php bootstrap/cache/packages.php bootstrap/cache/services.php 2>/dev/null || true
+
 # Install dependencies
-composer install --no-dev --optimize-autoloader
+composer install --no-dev --optimize-autoloader --no-scripts
 
 # Clear cache
 php artisan config:cache
